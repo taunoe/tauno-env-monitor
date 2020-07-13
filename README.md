@@ -44,18 +44,23 @@ Update sensor firmware:
 
 - https://github.com/maarten-pennings/CCS811/tree/master/examples/ccs811flash
 
-Library: 
+### Library: 
 
 - https://github.com/adafruit/Adafruit_CCS811
 - https://github.com/maarten-pennings/CCS811
 
-## 1.3" Oled display module 128x32
+## 1.3" Oled display module 128x64
 
-I2C Address: 
+I2C Address: 0x3c; (Although marking on display says 0x78)
 
-### Links:
+Unknown manufacturer. After trial and error, I discovered my display driver is SH1106. Not SSD1306 like Adafruit uses.
 
-- https://learn.adafruit.com/monochrome-oled-breakouts
+- 5V
+
+### Library:
+
+- https://github.com/olikraus/U8g2_Arduino
+- https://github.com/olikraus/u8g2/wiki/u8x8reference
 
 ------------------------------------
 
@@ -69,17 +74,22 @@ I2C Address: 0x5C
 
 - https://learn.adafruit.com/adafruit-am2320-temperature-humidity-i2c-sensor
 
-## SDS011 Air quality (air particles or dust) sensor
+## Nova PM SDS011 Dust sensor
+
+Can measure fine dust and smoke = particulate matter (MP) concentrations in two categories:
+
+- Ultrafine dust particles with a diameter of 0 – 2.5 micrometres (μm/m3). Output PM2.5
+- Fine dust particles with a diameter 2.5 – 10 micrometres (μm/m3). Output PM10
 
 - 5V
 - RX UART data (3.3V)
 - TX UART data (3.3V)
 
-### Links:
+### Library:
 
-- https://github.com/ricki-z/SDS011
+- https://github.com/lewapek/sds-dust-sensors-arduino-library
 
-Python scripts (not tested):
+### Python scripts (not tested):
 
 - https://gist.github.com/netmaniac/a6414149a5a09ba1ebf702ff8d5056c5
 - https://gitlab.com/frankrich/sds011_particle_sensor
