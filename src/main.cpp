@@ -6,11 +6,10 @@
 
 #include <Arduino.h>
 #include <SdsDustSensor.h>
-#include <U8g2lib.h> // Universal 8bit Graphics Library 
-                     // (https://github.com/olikraus/u8g2/)
-#include <Wire.h>
+#include <U8g2lib.h>        // Universal 8bit Graphics Library 
+                            // (https://github.com/olikraus/u8g2/)
+#include <Wire.h>           // I2C
 
-const char compile_date[] = __DATE__ " " __TIME__;
 
 /* SDS011 Dust Sensor */
 const int SDS_RX_PIN = D7; // D3 -> SDS011 TX pin
@@ -19,31 +18,39 @@ SoftwareSerial softwareSerial(SDS_RX_PIN, SDS_TX_PIN);
 SdsDustSensor sds(softwareSerial); //  additional parameters: retryDelayMs and maxRetriesNotAvailable
 
 /* Display */
-U8X8_SH1106_128X64_NONAME_HW_I2C u8x8(/* reset=*/ U8X8_PIN_NONE);
+U8X8_SH1106_128X64_NONAME_HW_I2C display (/* reset=*/ U8X8_PIN_NONE);
 
-const int MINUTE = 60000;
-const int WAKEUP_WORKING_TIME = MINUTE / 2; // 30 seconds.
-const int MEASUREMENT_INTERVAL = MINUTE * 5;
+/* Timing */
+const int MINUTE = 60000; 
+const int SDS_WAKEUP_TIME = MINUTE*5;               // 5min
+const int SDS_QUERY_TIME = (MINUTE*5) + (MINUTE/2); // 5min 30sek
+
+/* Timing booleans */
+boolean is_sds_wakeup = false;
+boolean is_sds_query = false;
+
+unsigned long prev_sds_wakeup_millis = 0;
+unsigned long prev_sds_query_millis = 0;
 
 void setup() {
   Serial.begin(115200);
 
   /* Display */
-  u8x8.begin();
-  u8x8.setPowerSave(0);
-  u8x8.setFont(u8x8_font_amstrad_cpc_extended_r);
+  display.begin();
+  display.setPowerSave(0);
+  display.setFont(u8x8_font_amstrad_cpc_extended_r);
 
-  u8x8.setCursor(0, 0);
-  u8x8.print("Compiled:");
+  display.setCursor(0, 0);         // Row 0, column 0
+  display.print("Compiled:");
 
-  u8x8.setCursor(1, 1);
-  u8x8.print(__DATE__);
+  display.setCursor(1, 1);         // Row 1, column 1
+  display.print(__DATE__);         // Compile date
 
-  u8x8.setCursor(1, 2);
-  u8x8.print(__TIME__);
+  display.setCursor(1, 2);         // Row 2, column 1
+  display.print(__TIME__);         // Compile time
 
-  u8x8.setCursor(0, 3);
-  u8x8.print("by Tauno Erik");
+  display.setCursor(0, 3);         // Row 3, column 0
+  display.print("by Tauno Erik");
 
   /* SDS011 Dust Sensor */
   sds.begin();
@@ -57,45 +64,63 @@ void setup() {
 } // setup end
 
 void loop() {
+  // Start measure millis
+  unsigned long current_millis = millis();
+
+  if ((unsigned long)(current_millis - prev_sds_wakeup_millis) >= SDS_WAKEUP_TIME){
+    is_sds_wakeup = true;
+    prev_sds_wakeup_millis = current_millis;
+  }
+  if ((unsigned long)(current_millis - prev_sds_query_millis) >= SDS_QUERY_TIME){
+    is_sds_query = true;
+    prev_sds_query_millis = current_millis;
+  }
 
   // Wake up SDS011
-  sds.wakeup();
-  delay(WAKEUP_WORKING_TIME);
+  if (is_sds_wakeup){
+    sds.wakeup();
+    is_sds_wakeup = false;
+  }
 
   // Get data from SDS011
-  PmResult pm = sds.queryPm();
-  if (pm.isOk()) {
-    Serial.print("PM2.5 = ");
-    Serial.print(pm.pm25); // float, μg/m3
-    u8x8.setCursor(0, 0);
-    u8x8.clearLine(0);
-    u8x8.print("PM2.5= ");
-    u8x8.setCursor(6, 0);
-    u8x8.print(pm.pm25);
+  if (is_sds_query){
+    PmResult pm = sds.queryPm();
+    if (pm.isOk()) {
+      Serial.print("PM2.5 = ");
+      Serial.print(pm.pm25); // float, μg/m3
 
-    Serial.print(", PM10 = ");
-    Serial.println(pm.pm10); // float, μg/m3
-    u8x8.setCursor(0, 1);
-    u8x8.clearLine(1);
-    u8x8.print("PM10 = ");
-    u8x8.setCursor(6, 1);
-    u8x8.print(pm.pm10);
+      display.setCursor(0, 0);
+      display.clearLine(0);
+      display.print("PM2.5= ");
+      display.setCursor(6, 0);
+      display.print(pm.pm25);
 
-    u8x8.clearLine(2);
-    u8x8.clearLine(3);
+      Serial.print(", PM10 = ");
+      Serial.println(pm.pm10); // float, μg/m3
 
-  } else {
-    Serial.print("Could not read values from SDS011 sensor, reason: ");
-    Serial.println(pm.statusToString());
-  }
+      display.setCursor(0, 1);
+      display.clearLine(1);
+      display.print("PM10 = ");
+      display.setCursor(6, 1);
+      display.print(pm.pm10);
 
-  // Put SDS011 back to sleep
-  WorkingStateResult state = sds.sleep();
-  if (state.isWorking()) {
-    Serial.println("Problem with sleeping the SDS011 sensor.");
-  } else {
-    Serial.println("SDS011 sensor is sleeping");
-    delay(MEASUREMENT_INTERVAL);
-  }
+      display.clearLine(2);
+      display.clearLine(3);
+
+    } else {
+      Serial.print("Could not read values from SDS011 sensor, reason: ");
+      Serial.println(pm.statusToString());
+    }
+
+    // Put SDS011 back to sleep
+    WorkingStateResult sds_state = sds.sleep();
+    if (sds_state.isWorking()) {
+      Serial.println("Problem with sleeping the SDS011 sensor.");
+    } else {
+      Serial.println("SDS011 sensor is sleeping");
+    }
+
+    is_sds_query = false;
+  } // end is_sds_query
 
 } // main loop end
