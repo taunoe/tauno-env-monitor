@@ -45,6 +45,66 @@ unsigned long prev_1minute_millis = 0;
 unsigned long prev_5minutes_millis = 0;
 unsigned long prev_5minutes_30sek = 0;
 
+
+void display_compile_data() {
+  display.setCursor(0, 0);         // Row 0, column 0
+  display.print("Compiled:");
+  display.setCursor(1, 1);         // Row 1, column 1
+  display.print(__DATE__);         // Compile date
+  display.setCursor(1, 2);         // Row 2, column 1
+  display.print(__TIME__);         // Compile time
+  display.setCursor(0, 3);         // Row 3, column 0
+  display.print("by Tauno Erik");
+}
+
+void print_sds011() {
+  Serial.print("PM2.5 = ");
+  Serial.print(sds011_pm25); // float, μg/m3
+  Serial.print(", PM10 = ");
+  Serial.println(sds011_pm10); // float, μg/m3
+}
+
+void print_ccs811() {
+  Serial.print("eco2 = ");
+  Serial.print(ccs811_eco2);
+  Serial.print(" ppm  ");
+  Serial.print("etvoc = ");
+  Serial.print(ccs811_etvoc);
+  Serial.print(" ppb  ");
+  Serial.println();
+}
+
+void display_sds011() {
+  // Row 0
+  display.setCursor(0, 0);
+  display.clearLine(0);
+  display.print("PM25 = ");
+  display.setCursor(7, 0);
+  display.print(sds011_pm25);
+  // Row 1
+  display.setCursor(0, 1);
+  display.clearLine(1);
+  display.print("PM10 = ");
+  display.setCursor(7, 1);
+  display.print(sds011_pm10);
+}
+
+void display_ccs811() {
+  // Row 2
+  display.setCursor(0, 2);
+  display.clearLine(2);
+  display.print("eco2 =");
+  display.setCursor(7, 2);
+  display.print(ccs811_eco2);
+  // Row 3
+  display.setCursor(0, 3);
+  display.clearLine(3);
+  display.print("tvoc =");
+  display.setCursor(7, 3);
+  display.print(ccs811_etvoc);
+}
+
+
 void setup() {
   Serial.begin(115200);
 
@@ -53,19 +113,7 @@ void setup() {
   display.begin();
   display.setPowerSave(0);
   display.setFont(u8x8_font_amstrad_cpc_extended_r);
-
-  // Print compile data
-  display.setCursor(0, 0);         // Row 0, column 0
-  display.print("Compiled:");
-
-  display.setCursor(1, 1);         // Row 1, column 1
-  display.print(__DATE__);         // Compile date
-
-  display.setCursor(1, 2);         // Row 2, column 1
-  display.print(__TIME__);         // Compile time
-
-  display.setCursor(0, 3);         // Row 3, column 0
-  display.print("by Tauno Erik");
+  display_compile_data();
 
   /* SDS011 Dust Sensor 
   ******************************************************/
@@ -103,8 +151,9 @@ void setup() {
 
 void loop() {
 
-  /* Start measure millis 
+  /* Timing
   ********************************************************/
+  // Start measure millis 
   unsigned long current_millis = millis();
 
   // 01:00
@@ -125,15 +174,13 @@ void loop() {
 
   /* Do things
   ********************************************************/
+  // Do this every 1 minutes
   if (is_1minute){
-    // mõõda
     // CCS811
     ccs811.read(&ccs811_eco2,&ccs811_etvoc,&ccs811_errstat,&ccs811_raw);
 
     if (ccs811_errstat == CCS811_ERRSTAT_OK) {
-      //Serial.print("raw6=");  Serial.print(ccs811_raw/1024); Serial.print(" uA  "); 
-      //Serial.print("raw10="); Serial.print(ccs811_raw%1024); Serial.print(" ADC  ");
-      //Serial.print("R="); Serial.print((1650*1000L/1023)*(ccs811_raw%1024)/(ccs811_raw/1024)); Serial.print(" ohm");
+      //
     } else if (ccs811_errstat == CCS811_ERRSTAT_OK_NODATA) {
       Serial.println("CCS811: waiting for (new) data");
     } else if (ccs811_errstat & CCS811_ERRSTAT_I2CFAIL) { 
@@ -143,43 +190,11 @@ void loop() {
       Serial.print("="); Serial.println( ccs811.errstat_str(ccs811_errstat) ); 
     }
 
-    // prindi
-    Serial.print("PM2.5 = ");
-    Serial.print(sds011_pm25); // float, μg/m3
-    display.setCursor(0, 0);
-    display.clearLine(0);
-    display.print("PM2.5= ");
-    display.setCursor(7, 0);
-    display.print(sds011_pm25);
-    Serial.print(", PM10 = ");
-    Serial.println(sds011_pm10); // float, μg/m3
-    display.setCursor(0, 1);
-    display.clearLine(1);
-    display.print("PM10 = ");
-    display.setCursor(7, 1);
-    display.print(sds011_pm10);
-
-    display.setCursor(0, 2);
-    display.clearLine(2);
-    display.print("eco2 =");
-    display.setCursor(7, 2);
-    display.print(ccs811_eco2);
-
-    display.setCursor(0, 3);
-    display.clearLine(3);
-    display.print("tvoc =");
-    display.setCursor(7, 3);
-    display.print(ccs811_etvoc);
-
-    Serial.print("CCS811: ");
-    Serial.print("eco2=");
-    Serial.print(ccs811_eco2);
-    Serial.print(" ppm  ");
-    Serial.print("etvoc=");
-    Serial.print(ccs811_etvoc);
-    Serial.print(" ppb  ");
-    Serial.println();
-    //
+    print_sds011();
+    print_ccs811();
+    display_sds011();
+    display_ccs811();
+    
     is_1minute = false;
   }
 
@@ -210,6 +225,6 @@ void loop() {
     }
 
     is_5minutes_30sek = false;
-  } // end is_sds_query
+  }
 
 } // main loop end
