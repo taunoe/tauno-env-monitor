@@ -24,7 +24,8 @@ void setup() {
   Serial.begin(115200);
   Serial.println("");
   Serial.println("setup: Starting CCS811 basic demo");
-  Serial.print("setup: ccs811 lib  version: "); Serial.println(CCS811_VERSION);
+  Serial.print("setup: ccs811 lib  version: "); 
+  Serial.println(CCS811_VERSION);
 
   // Enable I2C
   Wire.begin(SDA,SCL); 

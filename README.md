@@ -12,35 +12,68 @@ Default I2C SDA/SCL pins:
 
 ## BMP280 Humidity, temperature, barometric pressure and altitude sensor
 
-- 3.3V
 - I2C Address: 0x76 or 0x77
+
+### Pins
+
+|  BMP280  |  ESP8266  |
+|:--------:|:---------:|
+|   VCC    |    3V3    |
+|   GND    |    GND    |
+|   SCL    |    D1     |
+|   SDA    |    D2     |
+|   CSE    |    -      |
+|   SDD    |    -      |
+
+### Library:
+
 - Adafruit_BMP280_Library
 - https://learn.adafruit.com/adafruit-bmp280-barometric-pressure-plus-temperature-sensor-breakout/overview
 
 ## APDS-9960 Proximity, RGB and gesture sensor
 
-- 3.3V
 - I2C Address: 0x39
 - ambient light
 - color measuring
 - proximity detection
 - touchless gesture. Operating range 10-20cm.
 
-Arduino library:
+### Pins
+
+| APDS9960 |  ESP8266  |
+|:--------:|:---------:|
+|   VIN    |    3V3    |
+|   GND    |    GND    |
+|   SCL    |    D1     |
+|   SDA    |    D2     |
+|   INT    |    -      |
+
+### Library:
 
 - It works when you comment out //_wire.end();
 - https://github.com/arduino-libraries/Arduino_APDS9960
 
 ## CCS-811 (CJMCU-811) Digital gas sensor monitoring indoor air quality
 
-I2C Address: 0x5A / 0x5B
-
-- 3.3V
-- needs pullup resistors
+- I2C Address: 0x5A or 0x5B
+- Needs pullup resistors
 - CO2
 - TVOCs
 
-Update sensor firmware:
+### Pins
+
+| CCS811  |  ESP8266  |
+|:-------:|:---------:|
+|   VCC   |    3V3    |
+|   GND   |    GND    |
+|   SDA   |    D2     |
+|   SCL   |    D1     |
+| nWAKE   | D3 or GND |
+|   INT   |    -      |
+|   RST   |    -      |
+|   ADD   |    -      |
+
+### Update sensor firmware:
 
 - https://github.com/maarten-pennings/CCS811/tree/master/examples/ccs811flash
 
@@ -51,11 +84,18 @@ Update sensor firmware:
 
 ## 1.3" Oled display module 128x64
 
-I2C Address: 0x3c; (Although marking on display says 0x78)
+- I2C Address: 0x3c (Although marking on display says 0x78).
 
 Unknown manufacturer. After trial and error, I discovered my display driver is SH1106. Not SSD1306 like Adafruit uses.
 
-- 5V
+### Pins
+
+|   OLED  |  ESP8266  |
+|:-------:|:---------:|
+|   GND   |    GND    |
+|   VCC   |    5V     |
+|   SCL   |    D1     |
+|   SDA   |    D2     |
 
 ### Library:
 
@@ -66,9 +106,16 @@ Unknown manufacturer. After trial and error, I discovered my display driver is S
 
 ## AM2320 Temperature and humidity sensor
 
-I2C Address: 0x5C
+- I2C Address: 0x5C
 
-- 3.3V
+### Pins
+
+| AM2320  |  ESP8266  |
+|:-------:|:---------:|
+|   GND   |    GND    |
+|   VCC   |    3V3    |
+|   SDA   |    D2     |
+|   SCL   |    D1     |
 
 ### Links:
 
@@ -80,10 +127,20 @@ Can measure fine dust and smoke = particulate matter (MP) concentrations in two 
 
 - Ultrafine dust particles with a diameter of 0 – 2.5 micrometres (μm/m3). Output PM2.5
 - Fine dust particles with a diameter 2.5 – 10 micrometres (μm/m3). Output PM10
-
-- 5V
 - RX UART data (3.3V)
 - TX UART data (3.3V)
+
+### Pins
+
+| SDS011  |  ESP8266  |
+|:-------:|:---------:|
+|   TXD   |     D7    |
+|   RXD   |     D8    |
+|   GND   |    GND    |
+|   25um  |     -     |
+|   5V    |     5V    |
+|   1um   |     -     |
+|   NC    |     -     |
 
 ### Library:
 
