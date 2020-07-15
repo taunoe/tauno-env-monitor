@@ -6,6 +6,11 @@ Home environment monitoring system. Sensors will measure particulate matter (Ult
 - There are different libraries. Test them to be sure they will work with your MCU and sensor.
 - Keep code modular. So you can easily add and remove sections.
 
+### Links:
+
+- https://thingspeak.com/
+- https://github.com/mathworks/thingspeak-arduino
+
 ## Main board: WeMos D1 mini (ESP8266)
 
 ![Wemos D1 mini](./doc/wemos-d1-mini.jpg)

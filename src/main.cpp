@@ -15,6 +15,24 @@
 #include "APDS9960.h"         // Light, RGB, Proximity, Gesture sensor
 #include <Adafruit_Sensor.h>
 #include <Adafruit_AM2320.h>
+#include <ESP8266WiFi.h>
+//#include <ESP8266WiFiMulti.h>
+#include <ThingSpeak.h> 
+
+/******************************************************
+ * 0.
+ * Wifi & Thingspeak
+ ******************************************************/
+#include "secrets.h" 
+// File secrets.h content:
+// #define SECRET_SSID "MySSID"     // replace MySSID with your WiFi network name
+// #define SECRET_PASS "MyPassword" // replace MyPassword with your WiFi password
+const char * ssid = SECRET_SSID_1;   // your network SSID (name) 
+const char * pass = SECRET_PASS_1;   // your network password
+unsigned long myChannelNumber = THINGSPEAK_CH_ID;
+const char * myWriteAPIKey = THINGSPEAK_WRITE_APIKEY;
+WiFiClient  client;
+String myStatus = "ok";
 
 /******************************************************
  * 1. 
@@ -173,6 +191,8 @@ void display_compile_data() {
   display.print(__TIME__);         // Compile time
   display.setCursor(0, 3);         // Row 3, column 0
   display.print("by Tauno Erik");
+  display.setCursor(0, 4);         // Row 3, column 0
+  display.print(WiFi.localIP());
 }
 
 void display_sds011() {
@@ -194,7 +214,7 @@ void display_ccs811() {
   // Row 2
   display.setCursor(0, 2);
   display.clearLine(2);
-  display.print("eco2:");
+  display.print("co2:");
   display.setCursor(6, 2);
   display.print(ccs811_eco2);
   // Row 3
@@ -252,9 +272,31 @@ void setup() {
   Wire.begin(); //
   delay(1000);
 
+  /* Wifi
+   ******************************************************/
+  Serial.println();
+  Serial.printf("Setup: MAC %s\n",WiFi.macAddress().c_str());
+  WiFi.mode(WIFI_STA);
+  /*
+  WiFi.begin(ssid, pass);
+
+  Serial.print("Connecting wifi .");
+  while( WiFi.status()!=WL_CONNECTED ) {
+    delay(250);
+    Serial.printf(".");
+  }
+  Serial.printf(" up (%s)\n",WiFi.localIP().toString().c_str());
+  //Serial.println(WiFi.localIP());
+  Serial.println();
+  */
+
+  /* Enable ThingSpeak 
+   ******************************************************/
+  ThingSpeak.begin(client);
+  
+
   /* Display 
    ******************************************************/
-  
   display.begin();
   display.setPowerSave(0);
   display.setFont(u8x8_font_amstrad_cpc_extended_r);
@@ -317,9 +359,47 @@ void setup() {
 } // setup end
 
 void loop() {
+
+  /* Connect or reconnect to WiFi
+   *******************************************************/
+  if(WiFi.status() != WL_CONNECTED){
+    Serial.print("Attempting to connect to wifi .");
+    while(WiFi.status() != WL_CONNECTED){
+      WiFi.begin(ssid, pass);  // Connect to WPA/WPA2 network. Change this line if using open or WEP network
+      Serial.print(".");
+      delay(500);     
+    } 
+    Serial.println("\nConnected.");
+  }
+
+  // set the fields with the values
+  ThingSpeak.setField(1, sds011_pm25);
+  ThingSpeak.setField(2, sds011_pm10);
+  ThingSpeak.setField(3, ccs811_eco2);
+  ThingSpeak.setField(4, ccs811_etvoc);
+  ThingSpeak.setField(5, bmp280_temp);
+  ThingSpeak.setField(6, bmp280_pressure);
+  ThingSpeak.setField(7, am2320_temp);
+  ThingSpeak.setField(8, am2320_hum);
+
+  // figure out the status message
+  /*
+  if(number1 > number2){
+    myStatus = String("field1 is greater than field2"); 
+  }
+  else if(number1 < number2){
+    myStatus = String("field1 is less than field2");
+  }
+  else{
+    myStatus = String("field1 equals field2");
+  }
+  */
+   myStatus = String("Test");
+  // set the status
+  ThingSpeak.setStatus(myStatus);
+
   /* APDS9960
    *******************************************************/
-  
   // Check if a proximity reading is available.
   if (APDS.proximityAvailable()) {
     proximity = APDS.readProximity();
@@ -455,6 +535,15 @@ void loop() {
       Serial.println("Problem with sleeping the SDS011 sensor.");
     } else {
       Serial.println("SDS011 sensor is sleeping");
+    }
+
+    // write to the ThingSpeak channel
+    int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
+    if(x == 200){
+      Serial.println("Channel update successful.");
+    }
+    else{
+      Serial.println("Problem updating channel. HTTP error code " + String(x));
     }
 
     is_5minutes_30sek = false;
