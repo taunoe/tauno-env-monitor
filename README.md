@@ -1,5 +1,9 @@
 # tauno-env-monitor
-Home environment monitoring system: dust, co2, humidity, temp
+Home environment monitoring system: dust, co2, humidity, temp.
+
+- First test all sensors separately to make sure they all work properly.
+- There are different libraries. Test them to be sure they will work with your MCU and sensor.
+- Keep code modular. So you can easily add and remove sections.
 
 ## Main board: WeMos D1 mini (ESP8266)
 
@@ -117,9 +121,9 @@ Unknown manufacturer. After trial and error, I discovered my display driver is S
 |   SDA   |    D2     |
 |   SCL   |    D1     |
 
-### Links:
+### Library:
 
-- https://learn.adafruit.com/adafruit-am2320-temperature-humidity-i2c-sensor
+- https://github.com/adafruit/Adafruit_AM2320
 
 ## Nova PM SDS011 Dust sensor
 

@@ -1,26 +1,35 @@
 /*****************************************************
  * File: main.cpp
  * By Tauno Erik
- * Modified: 14. juuli 2020
+ * Modified: 15. juuli 2020
  *****************************************************/
 
 #include <Arduino.h>
-#include <SdsDustSensor.h>
-#include <U8g2lib.h>        // Universal 8bit Graphics Library 
-                            // (https://github.com/olikraus/u8g2/)
-#include <Wire.h>           // I2C
-#include <ccs811.h>
+#include <Wire.h>             // I2C
+#include <SPI.h>
+#include <SdsDustSensor.h>    // Dust sensor
+#include <U8g2lib.h>          // Universal 8bit Graphics Library 
+                              // (https://github.com/olikraus/u8g2/)
+#include <ccs811.h>           // co2 sensor
+#include <Adafruit_BMP280.h>  // Barometric Pressure
+#include "APDS9960.h"         // Light, RGB, Proximity, Gesture sensor
+#include <Adafruit_Sensor.h>
+#include <Adafruit_AM2320.h>
 
-/* CCS811 co2 sensor 
-******************************************************/
+/******************************************************
+ * 1. 
+ * CCS811 co2 sensor 
+ ******************************************************/
 CCS811 ccs811(D3);            // nWAKE on D3 or GND
 uint16_t ccs811_eco2 = 0; 
 uint16_t ccs811_etvoc = 0;
 uint16_t ccs811_errstat = 0; 
 uint16_t ccs811_raw = 0;
 
-/* SDS011 Dust Sensor 
-******************************************************/
+/******************************************************
+ * 2.
+ * SDS011 Dust Sensor 
+ ******************************************************/
 const int SDS_RX_PIN = D7; // D3 -> SDS011 TX pin
 const int SDS_TX_PIN = D8; // D4 -> SDS011 RX pin
 SoftwareSerial softwareSerial(SDS_RX_PIN, SDS_TX_PIN);
@@ -28,34 +37,82 @@ SdsDustSensor sds(softwareSerial); //  additional parameters: retryDelayMs and m
 float sds011_pm25 = 0;
 float sds011_pm10 = 0;
 
-/* Display */
-U8X8_SH1106_128X64_NONAME_HW_I2C display (/* reset=*/ U8X8_PIN_NONE);
+/******************************************************
+ * 3.
+ * Display
+ ******************************************************/
+//U8X8_SH1106_128X64_NONAME_HW_I2C display (/* reset=*/ U8X8_PIN_NONE); // display Töötab aga am2320 ei tööta
+U8X8_SSD1306_128X64_NONAME_SW_I2C display(/* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);   // OLEDs without Reset of the Display
 
-/* Timing */
+
+/******************************************************
+ * 4.
+ * BMP280
+ ******************************************************/
+const int BMP280_ADDR {0x76};
+Adafruit_BMP280 bmp;
+Adafruit_Sensor *bmp_temp = bmp.getTemperatureSensor();
+Adafruit_Sensor *bmp_pressure = bmp.getPressureSensor();
+float bmp280_temp {0};
+float bmp280_pressure {0};
+
+/* Function to initialize BMP280 
+   use in setup() */
+void init_bmp280() {
+
+  if (!bmp.begin(BMP280_ADDR)) {
+    Serial.println(F("Could not find a BMP280 sensor, check wiring or I2C!"));
+    while (1) delay(10);
+  }
+
+  /* Default settings from datasheet. */
+  bmp.setSampling(Adafruit_BMP280::MODE_NORMAL,     /* Operating Mode. */
+                  Adafruit_BMP280::SAMPLING_X2,     /* Temp. oversampling */
+                  Adafruit_BMP280::SAMPLING_X16,    /* Pressure oversampling */
+                  Adafruit_BMP280::FILTER_X16,      /* Filtering. */
+                  Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
+
+  bmp_temp->printSensorDetails();
+}
+
+/******************************************************************
+ * 5.
+ * APDS9960
+ ******************************************************************/
+int proximity = 0; // smaller closer
+int r = 0, g = 0, b = 0;
+unsigned long lastUpdate = 0;
+
+/******************************************************************
+ * 6.
+ * AM2320
+ ******************************************************************/
+Adafruit_AM2320 am2320 = Adafruit_AM2320();
+float am2320_temp {0};
+float am2320_hum {0};
+
+/******************************************************************
+ * Timing
+ ******************************************************************/
+const int T_100MS = 100;
 const int ONE_MINUTE = 60000; 
 const int FIVE_MINUTES = ONE_MINUTE * 5;
 const int FIVE_MINUTES_30SEK = (ONE_MINUTE*5) + (ONE_MINUTE/2); // 5min 30sek
 
-/* Timing booleans */
+boolean is_100ms = false;
 boolean is_1minute = false;
 boolean is_5minutes = false;
 boolean is_5minutes_30sek = false;
 
+unsigned long prev_100ms_millis = 0;
 unsigned long prev_1minute_millis = 0;
 unsigned long prev_5minutes_millis = 0;
 unsigned long prev_5minutes_30sek = 0;
 
 
-void display_compile_data() {
-  display.setCursor(0, 0);         // Row 0, column 0
-  display.print("Compiled:");
-  display.setCursor(1, 1);         // Row 1, column 1
-  display.print(__DATE__);         // Compile date
-  display.setCursor(1, 2);         // Row 2, column 1
-  display.print(__TIME__);         // Compile time
-  display.setCursor(0, 3);         // Row 3, column 0
-  display.print("by Tauno Erik");
-}
+/*****************************************************
+ * Serial print
+ *****************************************************/
 
 void print_sds011() {
   Serial.print("PM2.5 = ");
@@ -74,18 +131,62 @@ void print_ccs811() {
   Serial.println();
 }
 
+void print_bmp280() {
+  Serial.print(F("Temperature = "));
+  Serial.print(bmp280_temp);
+  Serial.println(" *C");
+
+  Serial.print(F("Pressure = "));
+  Serial.print(bmp280_pressure);
+  Serial.println(" hPa");
+}
+
+void print_rgb() {
+  Serial.print("PR=");
+  Serial.print(proximity);
+  Serial.print(" rgb=");
+  Serial.print(r);
+  Serial.print(",");
+  Serial.print(g);
+  Serial.print(",");
+  Serial.println(b);
+}
+
+void print_am2320() {
+  Serial.println();
+  Serial.print("AM2320 temp: ");
+  Serial.print(am2320_temp);
+  Serial.print(" hum: ");
+  Serial.println(am2320_hum);
+}
+
+/*****************************************************
+ * Oled Display
+ *****************************************************/
+
+void display_compile_data() {
+  display.setCursor(0, 0);         // Row 0, column 0
+  display.print("Compiled:");
+  display.setCursor(1, 1);         // Row 1, column 1
+  display.print(__DATE__);         // Compile date
+  display.setCursor(1, 2);         // Row 2, column 1
+  display.print(__TIME__);         // Compile time
+  display.setCursor(0, 3);         // Row 3, column 0
+  display.print("by Tauno Erik");
+}
+
 void display_sds011() {
   // Row 0
   display.setCursor(0, 0);
   display.clearLine(0);
-  display.print("PM25 = ");
-  display.setCursor(7, 0);
+  display.print("PM25:");
+  display.setCursor(6, 0);
   display.print(sds011_pm25);
   // Row 1
   display.setCursor(0, 1);
   display.clearLine(1);
-  display.print("PM10 = ");
-  display.setCursor(7, 1);
+  display.print("PM10: ");
+  display.setCursor(6, 1);
   display.print(sds011_pm10);
 }
 
@@ -93,30 +194,75 @@ void display_ccs811() {
   // Row 2
   display.setCursor(0, 2);
   display.clearLine(2);
-  display.print("eco2 =");
-  display.setCursor(7, 2);
+  display.print("eco2:");
+  display.setCursor(6, 2);
   display.print(ccs811_eco2);
   // Row 3
   display.setCursor(0, 3);
   display.clearLine(3);
-  display.print("tvoc =");
-  display.setCursor(7, 3);
+  display.print("tvoc: ");
+  display.setCursor(6, 3);
   display.print(ccs811_etvoc);
+}
+
+void display_bmp280() {
+  // Row 4
+  display.setCursor(0, 4);
+  display.clearLine(4);
+  display.print("temp: ");
+  display.setCursor(6, 4);
+  display.print(bmp280_temp);
+  // Row 5
+  display.setCursor(0, 5);
+  display.clearLine(5);
+  display.print("pres: ");
+  display.setCursor(6, 5);
+  display.print(bmp280_pressure);
+}
+
+void display_am2320() {
+  // Row 6
+  display.setCursor(0, 6);
+  display.clearLine(6);
+  display.print("temp: ");
+  display.setCursor(6, 6);
+  display.print(am2320_temp);
+  // Row 7
+  display.setCursor(0, 7);
+  display.clearLine(7);
+  display.print("hum: ");
+  display.setCursor(6, 7);
+  display.print(am2320_hum);
+}
+
+void display_rgb() {
+  // Row 7
+  display.clearLine(8);
+  display.setCursor(0, 8);
+  display.print(r);
+  display.setCursor(4, 8);
+  display.print(g);
+  display.setCursor(8, 8);
+  display.print(b);
 }
 
 
 void setup() {
   Serial.begin(115200);
+  Wire.begin(); //
+  delay(1000);
 
   /* Display 
-  **************************************************/
+   ******************************************************/
+  
   display.begin();
   display.setPowerSave(0);
   display.setFont(u8x8_font_amstrad_cpc_extended_r);
   display_compile_data();
+  
 
   /* SDS011 Dust Sensor 
-  ******************************************************/
+   ******************************************************/
   sds.begin();
   // Prints SDS011 firmware version:
   Serial.print("SDS011 ");
@@ -126,7 +272,8 @@ void setup() {
   Serial.println(sds.setQueryReportingMode().toString());
 
   /* CCS811 
-  ******************************************************/
+   ******************************************************/
+  
   Serial.print("CCS811 lib version: "); 
   Serial.println(CCS811_VERSION);
   ccs811.set_i2cdelay(50); // Needed for ESP8266 because it doesn't handle I2C clock stretch correctly
@@ -145,37 +292,110 @@ void setup() {
   ok = ccs811.start(CCS811_MODE_1SEC);
   if( !ok ){
     Serial.println("CCS811 start FAILED");
-  } 
+  }
+  
+
+  /* BMP280
+   ****************************************************/
+  init_bmp280();
+  
+
+  /* APDS9960
+   ****************************************************/
+  if (!APDS.begin()) {
+    Serial.println("Error initializing APDS9960 sensor.");
+    while (true); // Stop forever
+  }
+  
+
+  /* AM2320
+   ****************************************************/
+  if (!am2320.begin()) {
+    Serial.println("Error initializing AM2320 sensor.");
+  };
 
 } // setup end
 
 void loop() {
+  /* APDS9960
+   *******************************************************/
+  
+  // Check if a proximity reading is available.
+  if (APDS.proximityAvailable()) {
+    proximity = APDS.readProximity();
+  }
+  // check if a color reading is available
+  if (APDS.colorAvailable()) {
+    APDS.readColor(r, g, b);
+  }
+  // check if a gesture reading is available
+  if (APDS.gestureAvailable()) {
+    int gesture = APDS.readGesture();
+    switch (gesture) {
+      case GESTURE_UP:
+        Serial.println("Detected UP gesture");
+        break;
+
+      case GESTURE_DOWN:
+        Serial.println("Detected DOWN gesture");
+        break;
+
+      case GESTURE_LEFT:
+        Serial.println("Detected LEFT gesture");
+        break;
+
+      case GESTURE_RIGHT:
+        Serial.println("Detected RIGHT gesture");
+        break;
+
+      default:
+        // ignore
+        break;
+    }
+  }
 
   /* Timing
   ********************************************************/
   // Start measure millis 
-  unsigned long current_millis = millis();
+  // unsigned long current_millis = millis();
 
+
+  // 100ms
+  if ((millis() - prev_100ms_millis) >= T_100MS){
+    is_100ms = true;
+    prev_100ms_millis = millis();
+  }
   // 01:00
-  if ((unsigned long)(current_millis - prev_1minute_millis) >= ONE_MINUTE){
+  if ((millis() - prev_1minute_millis) >= ONE_MINUTE){
     is_1minute = true;
-    prev_1minute_millis = current_millis;
+    prev_1minute_millis = millis();
   }
   // 05:00
-  if ((unsigned long)(current_millis - prev_5minutes_millis) >= FIVE_MINUTES){
+  if ((millis() - prev_5minutes_millis) >= FIVE_MINUTES){
     is_5minutes = true;
-    prev_5minutes_millis = current_millis;
+    prev_5minutes_millis = millis();
   }
   // 05:30
-  if ((unsigned long)(current_millis - prev_5minutes_30sek) >= FIVE_MINUTES_30SEK){
+  if ((millis() - prev_5minutes_30sek) >= FIVE_MINUTES_30SEK){
     is_5minutes_30sek = true;
-    prev_5minutes_30sek = current_millis;
+    prev_5minutes_30sek = millis();
   }
 
-  /* Do things
+  /* Do things by time
   ********************************************************/
+  if (is_100ms) {
+    //print_rgb();
+    is_100ms = false;
+  }
+
   // Do this every 1 minutes
   if (is_1minute){
+    //AM2320
+    am2320_temp = am2320.readTemperature();
+    am2320_hum = am2320.readHumidity();
+    print_am2320();
+    display_am2320();
+    
     // CCS811
     ccs811.read(&ccs811_eco2,&ccs811_etvoc,&ccs811_errstat,&ccs811_raw);
 
@@ -194,6 +414,19 @@ void loop() {
     print_ccs811();
     display_sds011();
     display_ccs811();
+
+    // BMP280
+    sensors_event_t temp_event, pressure_event;
+    bmp_temp->getEvent(&temp_event);
+    bmp_pressure->getEvent(&pressure_event);
+    bmp280_temp = temp_event.temperature;
+    bmp280_pressure = pressure_event.pressure;
+
+    print_bmp280();
+    display_bmp280();
+
+    print_rgb();
+    //display_rgb();
     
     is_1minute = false;
   }
