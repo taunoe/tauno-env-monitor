@@ -19,6 +19,7 @@
 //#include <ESP8266WiFiMulti.h>
 #include <ThingSpeak.h> 
 
+
 /******************************************************
  * 0.
  * Wifi & Thingspeak
@@ -32,7 +33,25 @@ const char * pass = SECRET_PASS_1;   // your network password
 unsigned long myChannelNumber = THINGSPEAK_CH_ID;
 const char * myWriteAPIKey = THINGSPEAK_WRITE_APIKEY;
 WiFiClient  client;
-String myStatus = "ok";
+
+String myStatus = "Test";
+
+void status_message() {
+// figure out the status message
+  /*
+  if(number1 > number2){
+    myStatus = String("field1 is greater than field2"); 
+  }
+  else if(number1 < number2){
+    myStatus = String("field1 is less than field2");
+  }
+  else{
+    myStatus = String("field1 equals field2");
+  }
+  */
+  myStatus = String("Ok");
+}
+
 
 /******************************************************
  * 1. 
@@ -43,6 +62,54 @@ uint16_t ccs811_eco2 = 0;
 uint16_t ccs811_etvoc = 0;
 uint16_t ccs811_errstat = 0; 
 uint16_t ccs811_raw = 0;
+
+/******************************************************
+ * Function to initialize CCS811
+ * use in setup()
+ ******************************************************/
+void init_ccs811() {
+  Serial.print("CCS811 lib version: "); 
+  Serial.println(CCS811_VERSION);
+  ccs811.set_i2cdelay(50); // Needed for ESP8266 because it doesn't handle I2C clock stretch correctly
+  bool ok = ccs811.begin();
+  if (!ok){
+    Serial.println("CCS811 begin FAILED");
+  } 
+  // Print CCS811 versions
+  Serial.print("CCS811 hardware    version: ");
+  Serial.println(ccs811.hardware_version(),HEX);
+  Serial.print("CCS811 bootloader  version: ");
+  Serial.println(ccs811.bootloader_version(),HEX);
+  Serial.print("CCS811 application version: ");
+  Serial.println(ccs811.application_version(),HEX);
+  // Start measuring
+  ok = ccs811.start(CCS811_MODE_1SEC);
+  if( !ok ){
+    Serial.println("CCS811 start FAILED");
+  }
+}
+
+/******************************************************
+ * Function to serial print ccs811 error state
+ * use in loop()
+ ******************************************************/
+void print_ccs811_errstat(uint16_t ccs811_errstat) {
+  if (ccs811_errstat == CCS811_ERRSTAT_OK) {
+    // all ok
+  }
+  else if (ccs811_errstat == CCS811_ERRSTAT_OK_NODATA) {
+    Serial.println("CCS811: waiting for (new) data");
+  }
+  else if (ccs811_errstat & CCS811_ERRSTAT_I2CFAIL) { 
+    Serial.println("CCS811: I2C error");
+  }
+  else {
+    Serial.print("CCS811: errstat="); 
+    Serial.print(ccs811_errstat,HEX); 
+    Serial.print("="); 
+    Serial.println( ccs811.errstat_str(ccs811_errstat) ); 
+  }
+}
 
 /******************************************************
  * 2.
@@ -74,8 +141,10 @@ Adafruit_Sensor *bmp_pressure = bmp.getPressureSensor();
 float bmp280_temp {0};
 float bmp280_pressure {0};
 
-/* Function to initialize BMP280 
-   use in setup() */
+/********************************************************
+ * Function to initialize BMP280 
+ * use in setup() 
+ *******************************************************/
 void init_bmp280() {
 
   if (!bmp.begin(BMP280_ADDR)) {
@@ -97,9 +166,41 @@ void init_bmp280() {
  * 5.
  * APDS9960
  ******************************************************************/
-int proximity = 0; // smaller closer
-int r = 0, g = 0, b = 0;
-unsigned long lastUpdate = 0;
+int proximity {0};  // smaller is closer
+int r {0};          // red
+int g {0};          // green
+int b {0};          // blue
+
+/******************************************************************
+ * Function to detect gesture
+ * use in loop()
+ ******************************************************************/
+void gesture_detection() {
+  int gesture = APDS.readGesture();
+
+    switch (gesture) {
+      case GESTURE_UP:
+        Serial.println("-----Detected UP gesture");
+        break;
+
+      case GESTURE_DOWN:
+        Serial.println("-----Detected DOWN gesture");
+        break;
+
+      case GESTURE_LEFT:
+        Serial.println("-----Detected LEFT gesture");
+        break;
+
+      case GESTURE_RIGHT:
+        Serial.println("-----Detected RIGHT gesture");
+        break;
+
+      default:
+        // ignore
+        break;
+    }
+
+}
 
 /******************************************************************
  * 6.
@@ -109,8 +210,9 @@ Adafruit_AM2320 am2320 = Adafruit_AM2320();
 float am2320_temp {0};
 float am2320_hum {0};
 
+
 /******************************************************************
- * Timing
+ * Timing calculation
  ******************************************************************/
 const int T_100MS = 100;
 const int ONE_MINUTE = 60000; 
@@ -127,9 +229,36 @@ unsigned long prev_1minute_millis = 0;
 unsigned long prev_5minutes_millis = 0;
 unsigned long prev_5minutes_30sek = 0;
 
+/******************************************************************
+ * Function to calculate time
+ * use in loop()
+ ******************************************************************/
+void calculate_time() {
+  // 100ms
+  if ((millis() - prev_100ms_millis) >= T_100MS){
+    is_100ms = true;
+    prev_100ms_millis = millis();
+  }
+  // 01:00
+  if ((millis() - prev_1minute_millis) >= ONE_MINUTE){
+    is_1minute = true;
+    prev_1minute_millis = millis();
+  }
+  // 05:00
+  if ((millis() - prev_5minutes_millis) >= FIVE_MINUTES){
+    is_5minutes = true;
+    prev_5minutes_millis = millis();
+  }
+  // 05:30
+  if ((millis() - prev_5minutes_30sek) >= FIVE_MINUTES_30SEK){
+    is_5minutes_30sek = true;
+    prev_5minutes_30sek = millis();
+  }
+}
+
 
 /*****************************************************
- * Serial print
+ * Functions to Serial print data
  *****************************************************/
 
 void print_sds011() {
@@ -171,15 +300,15 @@ void print_rgb() {
 }
 
 void print_am2320() {
-  Serial.println();
   Serial.print("AM2320 temp: ");
   Serial.print(am2320_temp);
   Serial.print(" hum: ");
   Serial.println(am2320_hum);
 }
 
+
 /*****************************************************
- * Oled Display
+ * Functions to display data on OLED screen
  *****************************************************/
 
 void display_compile_data() {
@@ -190,9 +319,9 @@ void display_compile_data() {
   display.setCursor(1, 2);         // Row 2, column 1
   display.print(__TIME__);         // Compile time
   display.setCursor(0, 3);         // Row 3, column 0
-  display.print("by Tauno Erik");
-  display.setCursor(0, 4);         // Row 3, column 0
   display.print(WiFi.localIP());
+  display.setCursor(0, 5);         // Row 5, column 0
+  display.print("by Tauno Erik");
 }
 
 void display_sds011() {
@@ -267,9 +396,12 @@ void display_rgb() {
 }
 
 
+/*********************************************************/
+
+
 void setup() {
   Serial.begin(115200);
-  Wire.begin(); //
+  Wire.begin();
   delay(1000);
 
   /* Wifi
@@ -277,35 +409,23 @@ void setup() {
   Serial.println();
   Serial.printf("Setup: MAC %s\n",WiFi.macAddress().c_str());
   WiFi.mode(WIFI_STA);
-  /*
-  WiFi.begin(ssid, pass);
-
-  Serial.print("Connecting wifi .");
-  while( WiFi.status()!=WL_CONNECTED ) {
-    delay(250);
-    Serial.printf(".");
-  }
-  Serial.printf(" up (%s)\n",WiFi.localIP().toString().c_str());
-  //Serial.println(WiFi.localIP());
-  Serial.println();
-  */
 
   /* Enable ThingSpeak 
    ******************************************************/
   ThingSpeak.begin(client);
   
-
   /* Display 
    ******************************************************/
   display.begin();
   display.setPowerSave(0);
   display.setFont(u8x8_font_amstrad_cpc_extended_r);
+
   display_compile_data();
   
-
   /* SDS011 Dust Sensor 
    ******************************************************/
   sds.begin();
+  delay(100);
   // Prints SDS011 firmware version:
   Serial.print("SDS011 ");
   Serial.println(sds.queryFirmwareVersion().toString()); 
@@ -315,33 +435,12 @@ void setup() {
 
   /* CCS811 
    ******************************************************/
+  init_ccs811();
   
-  Serial.print("CCS811 lib version: "); 
-  Serial.println(CCS811_VERSION);
-  ccs811.set_i2cdelay(50); // Needed for ESP8266 because it doesn't handle I2C clock stretch correctly
-  bool ok = ccs811.begin();
-  if (!ok){
-    Serial.println("CCS811 begin FAILED");
-  } 
-  // Print CCS811 versions
-  Serial.print("CCS811 hardware    version: ");
-  Serial.println(ccs811.hardware_version(),HEX);
-  Serial.print("CCS811 bootloader  version: ");
-  Serial.println(ccs811.bootloader_version(),HEX);
-  Serial.print("CCS811 application version: ");
-  Serial.println(ccs811.application_version(),HEX);
-  // Start measuring
-  ok = ccs811.start(CCS811_MODE_1SEC);
-  if( !ok ){
-    Serial.println("CCS811 start FAILED");
-  }
-  
-
   /* BMP280
    ****************************************************/
   init_bmp280();
   
-
   /* APDS9960
    ****************************************************/
   if (!APDS.begin()) {
@@ -349,7 +448,6 @@ void setup() {
     while (true); // Stop forever
   }
   
-
   /* AM2320
    ****************************************************/
   if (!am2320.begin()) {
@@ -357,6 +455,7 @@ void setup() {
   };
 
 } // setup end
+
 
 void loop() {
 
@@ -382,95 +481,43 @@ void loop() {
   ThingSpeak.setField(7, am2320_temp);
   ThingSpeak.setField(8, am2320_hum);
 
-  // figure out the status message
-  /*
-  if(number1 > number2){
-    myStatus = String("field1 is greater than field2"); 
-  }
-  else if(number1 < number2){
-    myStatus = String("field1 is less than field2");
-  }
-  else{
-    myStatus = String("field1 equals field2");
-  }
-  */
-   myStatus = String("Test");
   // set the status
+  status_message();
   ThingSpeak.setStatus(myStatus);
 
   /* APDS9960
    *******************************************************/
-  // Check if a proximity reading is available.
+  // If a proximity reading is available.
   if (APDS.proximityAvailable()) {
     proximity = APDS.readProximity();
   }
-  // check if a color reading is available
+  // If a color reading is available
   if (APDS.colorAvailable()) {
     APDS.readColor(r, g, b);
   }
-  // check if a gesture reading is available
+  // If a gesture reading is available
   if (APDS.gestureAvailable()) {
-    int gesture = APDS.readGesture();
-    switch (gesture) {
-      case GESTURE_UP:
-        Serial.println("Detected UP gesture");
-        break;
-
-      case GESTURE_DOWN:
-        Serial.println("Detected DOWN gesture");
-        break;
-
-      case GESTURE_LEFT:
-        Serial.println("Detected LEFT gesture");
-        break;
-
-      case GESTURE_RIGHT:
-        Serial.println("Detected RIGHT gesture");
-        break;
-
-      default:
-        // ignore
-        break;
-    }
+    gesture_detection();
   }
 
-  /* Timing
+  /* Calculate the time
   ********************************************************/
-  // Start measure millis 
-  // unsigned long current_millis = millis();
-
-
-  // 100ms
-  if ((millis() - prev_100ms_millis) >= T_100MS){
-    is_100ms = true;
-    prev_100ms_millis = millis();
-  }
-  // 01:00
-  if ((millis() - prev_1minute_millis) >= ONE_MINUTE){
-    is_1minute = true;
-    prev_1minute_millis = millis();
-  }
-  // 05:00
-  if ((millis() - prev_5minutes_millis) >= FIVE_MINUTES){
-    is_5minutes = true;
-    prev_5minutes_millis = millis();
-  }
-  // 05:30
-  if ((millis() - prev_5minutes_30sek) >= FIVE_MINUTES_30SEK){
-    is_5minutes_30sek = true;
-    prev_5minutes_30sek = millis();
-  }
+  calculate_time();
 
   /* Do things by time
   ********************************************************/
   if (is_100ms) {
-    //print_rgb();
     is_100ms = false;
   }
 
   // Do this every 1 minutes
   if (is_1minute){
-    //AM2320
+    // SDS011
+    Serial.println();
+    print_sds011();
+    display_sds011();
+
+    // AM2320
     am2320_temp = am2320.readTemperature();
     am2320_hum = am2320.readHumidity();
     print_am2320();
@@ -478,21 +525,8 @@ void loop() {
     
     // CCS811
     ccs811.read(&ccs811_eco2,&ccs811_etvoc,&ccs811_errstat,&ccs811_raw);
-
-    if (ccs811_errstat == CCS811_ERRSTAT_OK) {
-      //
-    } else if (ccs811_errstat == CCS811_ERRSTAT_OK_NODATA) {
-      Serial.println("CCS811: waiting for (new) data");
-    } else if (ccs811_errstat & CCS811_ERRSTAT_I2CFAIL) { 
-      Serial.println("CCS811: I2C error");
-    } else {
-      Serial.print("CCS811: errstat="); Serial.print(ccs811_errstat,HEX); 
-      Serial.print("="); Serial.println( ccs811.errstat_str(ccs811_errstat) ); 
-    }
-
-    print_sds011();
+    print_ccs811_errstat(ccs811_errstat);
     print_ccs811();
-    display_sds011();
     display_ccs811();
 
     // BMP280
@@ -501,12 +535,12 @@ void loop() {
     bmp_pressure->getEvent(&pressure_event);
     bmp280_temp = temp_event.temperature;
     bmp280_pressure = pressure_event.pressure;
-
     print_bmp280();
     display_bmp280();
 
+    // APDS9960
     print_rgb();
-    //display_rgb();
+    //display_rgb(); // no room on display
     
     is_1minute = false;
   }
@@ -540,10 +574,11 @@ void loop() {
     // write to the ThingSpeak channel
     int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
     if(x == 200){
-      Serial.println("Channel update successful.");
+      Serial.println("ThingSpeak update successful.");
     }
     else{
-      Serial.println("Problem updating channel. HTTP error code " + String(x));
+      Serial.print("Problem updating ThingSpeak.");
+      Serial.println(" HTTP error code " + String(x));
     }
 
     is_5minutes_30sek = false;

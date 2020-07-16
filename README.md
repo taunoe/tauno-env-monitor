@@ -79,8 +79,8 @@ Default I2C SDA/SCL pins:
 
 - I2C Address: 0x5A or 0x5B
 - Needs pullup resistors
-- CO2
-- TVOCs
+- eCO2
+- eTVOCs
 
 ### Pins
 
