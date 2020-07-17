@@ -1,10 +1,15 @@
-# tauno-env-monitor
+# My home environment monitoring system
 
-Home environment monitoring system. Sensors will measure particulate matter (Ultrafine dust PM2.5 and fine dust PM10), co2, TVOC, ambient light, humidity, temperature and barometric pressure.
+Sensors will measure particulate matter (Ultrafine dust PM2.5 and fine dust PM10), co2, TVOC, ambient light, humidity, temperature and barometric pressure.
+
+All data is stored on ThingSpeak channel. Publick view in real time: https://thingspeak.com/channels/1099844
+
+### Notes
 
 - First test all sensors separately to make sure they all work properly.
 - There are different libraries. Test them to be sure they will work with your MCU and sensor.
 - Keep code modular. So you can easily add and remove sections.
+- Wear gloves. The wires may become hot during soldering.
 
 ### Links:
 
@@ -110,7 +115,17 @@ Default I2C SDA/SCL pins:
 
 - I2C Address: 0x3c (Although marking on display says 0x78).
 
-Unknown manufacturer. After trial and error, I discovered my display driver is SH1106. Not SSD1306 like Adafruit uses.
+Unknown manufacturer. After trial and error, I discovered my display driver is SH1106. Not SSD1306 like Adafruit uses. 
+
+But when I use SH1106 constructor:
+
+    U8X8_SH1106_128X64_NONAME_HW_I2C display (/* reset=*/ U8X8_PIN_NONE);
+
+Display will looks good. But the AM2320 sensor will not work for unknown reason. I2C communication problem?
+
+Thats way I still use SSD1306 constructor.The fonts does not look nice and on the screen right side has white scratched strip.
+
+    U8X8_SSD1306_128X64_NONAME_SW_I2C display(/* clock=*/ SCL, /* data=*/ SDA, /* reset=*/ U8X8_PIN_NONE);
 
 ### Pins
 

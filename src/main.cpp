@@ -19,6 +19,21 @@
 //#include <ESP8266WiFiMulti.h>
 #include <ThingSpeak.h> 
 
+const int LED_1 {D6};
+const int LED_2 {D5};
+const int LED_3 {D0};
+const int LED_4 {D4}; // allso on board LED!
+
+void setup_leds() {
+  pinMode(LED_1, OUTPUT);
+  pinMode(LED_2, OUTPUT);
+  pinMode(LED_3, OUTPUT);
+  pinMode(LED_4, OUTPUT);
+  digitalWrite(LED_1, LOW);
+  digitalWrite(LED_2, LOW);
+  digitalWrite(LED_3, LOW);
+  digitalWrite(LED_4, HIGH); // HIGH = on board led off
+}
 
 /******************************************************
  * 0.
@@ -402,7 +417,21 @@ void display_rgb() {
 void setup() {
   Serial.begin(115200);
   Wire.begin();
-  delay(1000);
+
+  setup_leds();
+
+  digitalWrite(LED_1, HIGH);
+  delay(300);
+  digitalWrite(LED_1, LOW);
+  digitalWrite(LED_2, HIGH);
+  delay(300);
+  digitalWrite(LED_2, LOW);
+  digitalWrite(LED_3, HIGH);
+  delay(300);
+  digitalWrite(LED_3, LOW);
+  digitalWrite(LED_4, LOW);
+  delay(300);
+  digitalWrite(LED_4, HIGH);
 
   /* Wifi
    ******************************************************/
