@@ -48,7 +48,7 @@ const char * pass = SECRET_PASS_1;   // your network password
 const unsigned long myChannelNumber = THINGSPEAK_CH_ID;
 const char * myWriteAPIKey = THINGSPEAK_WRITE_APIKEY;
 
-const int BMP280_ADDR {0x76};
+const int BMP280_ADDR = 0x76;
 
 const int T_100MS = 100;
 const int ONE_MINUTE = 60000; 
@@ -58,7 +58,6 @@ const int FIVE_MINUTES_30SEK = (ONE_MINUTE*5) + (ONE_MINUTE/2); // 5min 30sek
 /********************
  * Global variables
  ********************/
-String myStatus = "Test";
 
 //CCS811 co2 sensor:
 uint16_t ccs811_eco2 = 0; 
@@ -69,16 +68,16 @@ uint16_t ccs811_raw = 0;
 float sds011_pm25 = 0;
 float sds011_pm10 = 0;
 
-float bmp280_temp {0};
-float bmp280_pressure {0};
+float bmp280_temp = 0;
+float bmp280_pressure = 0;
 
-int proximity {0};  // smaller is closer //APDS9960
-int r {0};          // red
-int g {0};          // green
-int b {0};          // blue
+int proximity = 0;  // smaller is closer //APDS9960
+int r = 0;          // red
+int g = 0;          // green
+int b = 0;          // blue
 
-float am2320_temp {0};
-float am2320_hum {0};
+float am2320_temp = 0;
+float am2320_hum = 0;
 
 boolean is_100ms = false;
 boolean is_1minute = false;
@@ -90,9 +89,7 @@ unsigned long prev_1minute_millis = 0;
 unsigned long prev_5minutes_millis = 0;
 unsigned long prev_5minutes_30sek = 0;
 
-/********************
- * Functions Prototyps
- ********************/
+// Functions Prototyps
 void setup_leds();
 void init_ccs811();
 void print_ccs811_errstat(uint16_t ccs811_errstat);
@@ -100,18 +97,12 @@ String get_status();
 void init_bmp280();
 void gesture_detection();
 void calculate_time();
-
-void print_sds011();
-void print_ccs811();
-void print_bmp280();
-void print_rgb();
-void print_am2320();
-
+void read_sds011();
+void serial_print_sensors_data();
+void set_thingspeak_fields();
 void display_compile_data();
 void display_sds011();
-void display_ccs811();
-void display_bmp280();
-void display_am2320();
+void display_data();
 void display_rgb();
 
 /********************
@@ -141,24 +132,12 @@ void setup() {
 
   setup_leds();
 
-  digitalWrite(LED_1, HIGH);
-  delay(300);
-  digitalWrite(LED_1, LOW);
-  digitalWrite(LED_2, HIGH);
-  delay(300);
-  digitalWrite(LED_2, LOW);
-  digitalWrite(LED_3, HIGH);
-  delay(300);
-  digitalWrite(LED_3, LOW);
-  digitalWrite(LED_4, LOW);
-  delay(300);
-  digitalWrite(LED_4, HIGH);
-
   /* Wifi
    ******************************************************/
-  Serial.println();
-  Serial.printf("Setup: MAC %s\n",WiFi.macAddress().c_str());
+  Serial.printf("\nSetup: MAC %s\n",WiFi.macAddress().c_str());
   WiFi.mode(WIFI_STA);
+  Serial.print(WiFi.localIP());
+  Serial.println();
 
   /* Enable ThingSpeak 
    ******************************************************/
@@ -168,9 +147,9 @@ void setup() {
    ******************************************************/
   display.begin();
   display.setPowerSave(0);
-  display.setFont(u8x8_font_amstrad_cpc_extended_r);
-
-  display_compile_data();
+  //display.setFont(u8x8_font_amstrad_cpc_extended_r);
+  display.setFont(u8x8_font_amstrad_cpc_extended_f);
+  //display.setFont(u8x8_font_chroma48medium8_r);
   
   /* SDS011 Dust Sensor 
    ******************************************************/
@@ -183,19 +162,16 @@ void setup() {
   Serial.print("SDS011 ");
   Serial.println(sds.setQueryReportingMode().toString());
 
-  /* CCS811 
-   ******************************************************/
+
   init_ccs811();
   
-  /* BMP280
-   ****************************************************/
   init_bmp280();
   
   /* APDS9960
    ****************************************************/
   if (!APDS.begin()) {
     Serial.println("Error initializing APDS9960 sensor.");
-    while (true); // Stop forever
+    // while (true); // Stop forever
   }
   
   /* AM2320
@@ -203,6 +179,8 @@ void setup() {
   if (!am2320.begin()) {
     Serial.println("Error initializing AM2320 sensor.");
   };
+
+  display_compile_data();
 
 } // setup end
 
@@ -214,26 +192,13 @@ void loop() {
   if(WiFi.status() != WL_CONNECTED){
     Serial.print("Attempting to connect to wifi .");
     while(WiFi.status() != WL_CONNECTED){
-      WiFi.begin(ssid, pass);  // Connect to WPA/WPA2 network. Change this line if using open or WEP network
+      WiFi.begin(ssid, pass);
       Serial.print(".");
       delay(500);     
     } 
-    Serial.println("\nConnected.");
+    Serial.println("\n Wifi Connected.");
   }
 
-  // set the fields with the values
-  ThingSpeak.setField(1, sds011_pm25);
-  ThingSpeak.setField(2, sds011_pm10);
-  ThingSpeak.setField(3, ccs811_eco2);
-  ThingSpeak.setField(4, ccs811_etvoc);
-  ThingSpeak.setField(5, bmp280_temp);
-  ThingSpeak.setField(6, bmp280_pressure);
-  ThingSpeak.setField(7, am2320_temp);
-  ThingSpeak.setField(8, am2320_hum);
-
-  // get and set the status
-  myStatus = get_status();
-  ThingSpeak.setStatus(myStatus);
 
   /* APDS9960
    *******************************************************/
@@ -250,8 +215,6 @@ void loop() {
     gesture_detection();
   }
 
-  /* Calculate the time
-  ********************************************************/
   calculate_time();
 
   /* Do things by time
@@ -260,24 +223,15 @@ void loop() {
     is_100ms = false;
   }
 
-  // Do this every 1 minutes
+  
   if (is_1minute){
-    // SDS011
-    Serial.println();
-    print_sds011();
-    display_sds011();
-
-    // AM2320
-    am2320_temp = am2320.readTemperature();
-    am2320_hum = am2320.readHumidity();
-    print_am2320();
-    display_am2320();
-    
     // CCS811
     ccs811.read(&ccs811_eco2,&ccs811_etvoc,&ccs811_errstat,&ccs811_raw);
     print_ccs811_errstat(ccs811_errstat);
-    print_ccs811();
-    display_ccs811();
+    
+    // AM2320
+    am2320_temp = am2320.readTemperature();
+    am2320_hum = am2320.readHumidity();
 
     // BMP280
     sensors_event_t temp_event, pressure_event;
@@ -285,43 +239,28 @@ void loop() {
     bmp_pressure->getEvent(&pressure_event);
     bmp280_temp = temp_event.temperature;
     bmp280_pressure = pressure_event.pressure;
-    print_bmp280();
-    display_bmp280();
-
-    // APDS9960
-    print_rgb();
-    //display_rgb(); // no room on display
+    
+    display_data();
+    serial_print_sensors_data();
     
     is_1minute = false;
   }
 
-  // Do this every 5 minutes
+  
   if (is_5minutes){
     sds.wakeup();
     is_5minutes = false;
   }
 
-  // Do this every 5 minutes and 30 seconds
+  
   if (is_5minutes_30sek){
-    // Query SDS011
-    PmResult pm = sds.queryPm();
-    if (pm.isOk()) {
-      sds011_pm25 = pm.pm25;
-      sds011_pm10 = pm.pm10;
-    } else {
-      Serial.print("Could not read values from SDS011 sensor, reason: ");
-      Serial.println(pm.statusToString());
-    }
+    read_sds011();
 
-    // Put SDS011 back to sleep
-    WorkingStateResult sds_state = sds.sleep();
-    if (sds_state.isWorking()) {
-      Serial.println("Problem with sleeping the SDS011 sensor.");
-    } else {
-      Serial.println("SDS011 sensor is sleeping");
-    }
+    set_thingspeak_fields(); 
 
-    // write to the ThingSpeak channel
+    ThingSpeak.setStatus(get_status());
+
+    // Write to the ThingSpeak channel
     int x = ThingSpeak.writeFields(myChannelNumber, myWriteAPIKey);
     if(x == 200){
       Serial.println("ThingSpeak update successful.");
@@ -331,6 +270,8 @@ void loop() {
       Serial.println(" HTTP error code " + String(x));
     }
 
+    display_sds011();
+
     is_5minutes_30sek = false;
   }
 
@@ -338,21 +279,64 @@ void loop() {
 
 /********************************************************************/
 
+/**
+ * Function to read data from SDS011
+ * Afterwards puts back to sleep
+ **/
+void read_sds011() {
+  // Query SDS011
+  PmResult pm = sds.queryPm();
+  if (pm.isOk()) {
+    sds011_pm25 = pm.pm25;
+    sds011_pm10 = pm.pm10;
+  } else {
+    Serial.print("Could not read values from SDS011 sensor, reason: ");
+    Serial.println(pm.statusToString());
+  }
+
+  // Put SDS011 back to sleep
+  WorkingStateResult sds_state = sds.sleep();
+  if (sds_state.isWorking()) {
+    Serial.println("Problem with sleeping the SDS011 sensor.");
+  } else {
+    Serial.println("SDS011 sensor is sleeping");
+  }
+}
+
+/**
+ * Function to initialize LEDs pins and intro blinks.
+ * Use in loop()
+ **/
 void setup_leds() {
   pinMode(LED_1, OUTPUT);
   pinMode(LED_2, OUTPUT);
   pinMode(LED_3, OUTPUT);
   pinMode(LED_4, OUTPUT);
+
   digitalWrite(LED_1, LOW);
   digitalWrite(LED_2, LOW);
   digitalWrite(LED_3, LOW);
   digitalWrite(LED_4, HIGH); // HIGH = on board led off
+
+  digitalWrite(LED_1, HIGH);
+  delay(500);
+  digitalWrite(LED_1, LOW);
+  digitalWrite(LED_2, HIGH);
+  delay(500);
+  digitalWrite(LED_2, LOW);
+  digitalWrite(LED_3, HIGH);
+  delay(500);
+  digitalWrite(LED_3, LOW);
+  digitalWrite(LED_4, LOW);
+  delay(500);
+  digitalWrite(LED_4, HIGH);
 }
 
-/******************************************************
+
+/**
  * Function to initialize CCS811
- * use in setup()
- ******************************************************/
+ * Use in setup()
+ **/
 void init_ccs811() {
   Serial.print("CCS811 lib version: "); 
   Serial.println(CCS811_VERSION);
@@ -375,10 +359,11 @@ void init_ccs811() {
   }
 }
 
-/******************************************************
+
+/**
  * Function to serial print ccs811 error state
  * use in loop()
- ******************************************************/
+ **/
 void print_ccs811_errstat(uint16_t ccs811_errstat) {
   if (ccs811_errstat == CCS811_ERRSTAT_OK) {
     // all ok
@@ -397,11 +382,32 @@ void print_ccs811_errstat(uint16_t ccs811_errstat) {
   }
 }
 
+
+/**
+ * Function to set ThingSpeak the fields with the values
+ **/
+void set_thingspeak_fields() {
+  ThingSpeak.setField(1, sds011_pm25);
+  ThingSpeak.setField(2, sds011_pm10);
+  ThingSpeak.setField(3, ccs811_eco2);
+  ThingSpeak.setField(4, ccs811_etvoc);
+  ThingSpeak.setField(5, bmp280_temp);
+  ThingSpeak.setField(6, bmp280_pressure);
+  ThingSpeak.setField(7, am2320_temp);
+  ThingSpeak.setField(8, am2320_hum);
+}
+
+/**
+ * Function to generate ThingSpeaks status messages
+ **/
 String get_status() {
   String status = ""; 
 
   if (isnan(am2320_temp)){
     status += String("-am2320er");
+  }
+  else if (ccs811_errstat != CCS811_ERRSTAT_OK) {
+    status += String("-ccs811er");
   }
   else{
     status += String("-am2320ok");
@@ -410,15 +416,16 @@ String get_status() {
   return status;
 }
 
-/********************************************************
+
+/**
  * Function to initialize BMP280 
- * use in setup() 
- *******************************************************/
+ * Use in setup() 
+ **/
 void init_bmp280() {
 
   if (!bmp.begin(BMP280_ADDR)) {
     Serial.println(F("Could not find a BMP280 sensor, check wiring or I2C!"));
-    while (1) delay(10);
+    // while (1) delay(10); // Stop forever
   }
 
   /* Default settings from datasheet. */
@@ -431,10 +438,11 @@ void init_bmp280() {
   bmp_temp->printSensorDetails();
 }
 
-/******************************************************************
+
+/**
  * Function to detect gesture
- * use in loop()
- ******************************************************************/
+ * Use in loop()
+ **/
 void gesture_detection() {
   int gesture = APDS.readGesture();
 
@@ -462,10 +470,11 @@ void gesture_detection() {
 
 }
 
-/******************************************************************
- * Function to calculate time
- * use in loop()
- ******************************************************************/
+
+/**
+ * Function to calculate timing times
+ * Use in loop()
+ **/
 void calculate_time() {
   // 100ms
   if ((millis() - prev_100ms_millis) >= T_100MS){
@@ -489,53 +498,25 @@ void calculate_time() {
   }
 }
 
+
 /*****************************************************
  * Functions to Serial print data
  *****************************************************/
+void serial_print_sensors_data(){
+  Serial.printf("\nPM2.5: %.2f μg/m3", sds011_pm25);
+  Serial.printf(", PM10: %.2f μg/m3\n", sds011_pm10);
 
-void print_sds011() {
-  Serial.print("PM2.5 = ");
-  Serial.print(sds011_pm25); // float, μg/m3
-  Serial.print(", PM10 = ");
-  Serial.println(sds011_pm10); // float, μg/m3
-}
+  Serial.printf("eCO2: %i ppm,", ccs811_eco2);
+  Serial.printf(" eTVOC: %i ppb\n", ccs811_etvoc);
 
-void print_ccs811() {
-  Serial.print("eco2 = ");
-  Serial.print(ccs811_eco2);
-  Serial.print(" ppm  ");
-  Serial.print("etvoc = ");
-  Serial.print(ccs811_etvoc);
-  Serial.print(" ppb  ");
-  Serial.println();
-}
+  Serial.printf("BMP Temp: %.2f *C,", bmp280_temp);
+  Serial.printf(" Pressure = %.2f hPa\n", bmp280_pressure);
 
-void print_bmp280() {
-  Serial.print(F("Temperature = "));
-  Serial.print(bmp280_temp);
-  Serial.println(" *C");
+  Serial.printf("AM2 temp: %.2f *C,", am2320_temp);
+  Serial.printf(" Hum: %.2f\n", am2320_hum);
 
-  Serial.print(F("Pressure = "));
-  Serial.print(bmp280_pressure);
-  Serial.println(" hPa");
-}
-
-void print_rgb() {
-  Serial.print("PR=");
-  Serial.print(proximity);
-  Serial.print(" rgb=");
-  Serial.print(r);
-  Serial.print(",");
-  Serial.print(g);
-  Serial.print(",");
-  Serial.println(b);
-}
-
-void print_am2320() {
-  Serial.print("AM2320 temp: ");
-  Serial.print(am2320_temp);
-  Serial.print(" hum: ");
-  Serial.println(am2320_hum);
+  Serial.printf("PR: %i ", proximity);
+  Serial.printf(" rgb: %i,%i,%i\n", r,g,b);
 }
 
 /*****************************************************
@@ -543,80 +524,62 @@ void print_am2320() {
  *****************************************************/
 
 void display_compile_data() {
-  display.setCursor(0, 0);         // Row 0, column 0
-  display.print("Compiled:");
-  display.setCursor(1, 1);         // Row 1, column 1
-  display.print(__DATE__);         // Compile date
-  display.setCursor(1, 2);         // Row 2, column 1
-  display.print(__TIME__);         // Compile time
-  display.setCursor(0, 3);         // Row 3, column 0
+  display.drawString(0, 0,"compiled:");
+  display.drawString(1, 1, __DATE__);
+  display.drawString(1, 2, __TIME__);
+  display.setCursor(0, 3);
   display.print(WiFi.localIP());
-  display.setCursor(0, 5);         // Row 5, column 0
-  display.print("by Tauno Erik");
+  display.drawString(0, 5, "by Tauno Erik");
 }
 
 void display_sds011() {
   // Row 0
-  display.setCursor(0, 0);
   display.clearLine(0);
-  display.print("PM25:");
+  display.drawString(0, 0,"PM25:");
   display.setCursor(6, 0);
   display.print(sds011_pm25);
   // Row 1
-  display.setCursor(0, 1);
   display.clearLine(1);
-  display.print("PM10: ");
+  display.drawString(0, 1,"PM10:");
   display.setCursor(6, 1);
   display.print(sds011_pm10);
 }
 
-void display_ccs811() {
+void display_data() {
   // Row 2
-  display.setCursor(0, 2);
   display.clearLine(2);
-  display.print("co2:");
+  display.drawString(0, 2,"co2:");
   display.setCursor(6, 2);
   display.print(ccs811_eco2);
   // Row 3
-  display.setCursor(0, 3);
   display.clearLine(3);
-  display.print("tvoc: ");
+  display.drawString(0, 3,"tvoc:");
   display.setCursor(6, 3);
   display.print(ccs811_etvoc);
-}
-
-void display_bmp280() {
   // Row 4
-  display.setCursor(0, 4);
   display.clearLine(4);
-  display.print("temp: ");
+  display.drawString(0, 4,"temp:");
   display.setCursor(6, 4);
   display.print(bmp280_temp);
   // Row 5
-  display.setCursor(0, 5);
   display.clearLine(5);
-  display.print("pres: ");
+  display.drawString(0, 5,"pres:");
   display.setCursor(6, 5);
   display.print(bmp280_pressure);
-}
-
-void display_am2320() {
   // Row 6
-  display.setCursor(0, 6);
   display.clearLine(6);
-  display.print("temp: ");
+  display.drawString(0, 6,"temp:");
   display.setCursor(6, 6);
   display.print(am2320_temp);
   // Row 7
-  display.setCursor(0, 7);
   display.clearLine(7);
-  display.print("hum: ");
+  display.drawString(0, 7,"hum:");
   display.setCursor(6, 7);
   display.print(am2320_hum);
 }
 
 void display_rgb() {
-  // Row 7
+  // No room on display
   display.clearLine(8);
   display.setCursor(0, 8);
   display.print(r);
