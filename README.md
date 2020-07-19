@@ -149,6 +149,10 @@ Thats way I still use SSD1306 constructor.The fonts does not look nice and on th
 
 - I2C Address: 0x5C
 
+## PROBLEM!
+
+Sensor will work normally a couple of hours. After that will not respond anymore. Needs power off restart.
+
 ### Pins
 
 | AM2320  |  ESP8266  |
@@ -160,7 +164,8 @@ Thats way I still use SSD1306 constructor.The fonts does not look nice and on th
 
 ### Library:
 
-- https://github.com/adafruit/Adafruit_AM2320
+- https://github.com/EngDial/AM2320
+- https://github.com/adafruit/Adafruit_AM2320 (works 2h then returns nan)
 
 ## Nova PM SDS011 Dust sensor
 

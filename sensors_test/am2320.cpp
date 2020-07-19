@@ -1,34 +1,31 @@
-/*****************************************************
- * File: main.cpp
- * By Tauno Erik
- * Modified: 15. juuli 2020
- *****************************************************/
-
 #include <Arduino.h>
+#include <AM2320.h>
 
-#include <Adafruit_Sensor.h>
-#include <Adafruit_AM2320.h>
-
-Adafruit_AM2320 am2320 = Adafruit_AM2320();
-float am2320_temp {0};
-float am2320_hum {0};
+AM2320 th(&Wire);
 
 void setup() {
   Serial.begin(115200);
-  while (!Serial) {
-    delay(10); // hang out until serial port opens
-  }
-
-  Serial.println("Adafruit AM2320 Basic Test");
-  am2320.begin();
+  Wire.begin(SDA, SCL);
 }
 
 void loop() {
-  am2320_temp = am2320.readTemperature();
-  am2320_hum = am2320.readHumidity();
-
-  Serial.print("Temp: "); Serial.println(am2320_temp);
-  Serial.print("Hum: "); Serial.println(am2320_hum);
-
+  Serial.println(F("Chip = AM2320"));
+  switch(th.Read()) {
+    case 2:
+      Serial.println(F("  CRC failed"));
+      break;
+    case 1:
+      Serial.println(F("  Sensor offline"));
+      break;
+    case 0:
+      Serial.print(F("  Humidity = "));
+      Serial.print(th.Humidity);
+      Serial.println(F("%"));
+      Serial.print(F("  Temperature = "));
+      Serial.print(th.cTemp);
+      Serial.println(F("*C"));
+      Serial.println();
+      break;
+  }
   delay(2000);
 }

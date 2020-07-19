@@ -13,12 +13,16 @@
 #include <ccs811.h>           // co2 sensor
 #include <Adafruit_BMP280.h>  // Barometric Pressure
 #include "APDS9960.h"         // Light, RGB, Proximity, Gesture sensor
-#include <Adafruit_Sensor.h>
-#include <Adafruit_AM2320.h>
+//#include <Adafruit_Sensor.h>
+//#include <Adafruit_AM2320.h>
+#include "AM2320.h"
 #include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WebServer.h>
 //#include <ESP8266WiFiMulti.h>
 #include <ThingSpeak.h>
-#include "secrets.h" 
+#include "secrets.h"
+#include "index.h"
 // File secrets.h content:
 // #define SECRET_SSID "MySSID"     // replace MySSID with your WiFi network name
 // #define SECRET_PASS "MyPassword" // replace MyPassword with your WiFi password
@@ -89,7 +93,32 @@ unsigned long prev_1minute_millis = 0;
 unsigned long prev_5minutes_millis = 0;
 unsigned long prev_5minutes_30sek = 0;
 
-// Functions Prototyps
+int i2cbusstatus;
+
+/********************
+ * Object Calls
+ *******************/
+WiFiClient  client;
+ESP8266WebServer server(80);
+
+CCS811 ccs811(NWAKE_PIN);            
+
+SoftwareSerial softwareSerial(SDS_RX_PIN, SDS_TX_PIN);
+SdsDustSensor sds(softwareSerial); //  additional parameters: retryDelayMs and maxRetriesNotAvailable
+
+//U8X8_SH1106_128X64_NONAME_HW_I2C display (/* reset=*/ U8X8_PIN_NONE); // display Töötab aga am2320 ei tööta
+U8X8_SSD1306_128X64_NONAME_SW_I2C display(SCL, SDA, U8X8_PIN_NONE);
+
+Adafruit_BMP280 bmp;
+Adafruit_Sensor *bmp_temp = bmp.getTemperatureSensor();
+Adafruit_Sensor *bmp_pressure = bmp.getPressureSensor();
+
+//Adafruit_AM2320 am2320 = Adafruit_AM2320();
+AM2320 am2320(&Wire);
+
+
+/* Functions Prototyps
+****************************************/
 void setup_leds();
 void init_ccs811();
 void print_ccs811_errstat(uint16_t ccs811_errstat);
@@ -105,30 +134,27 @@ void display_sds011();
 void display_data();
 void display_rgb();
 
-/********************
- * Object Calls
- *******************/
-WiFiClient  client;
-
-CCS811 ccs811(NWAKE_PIN);            
-
-SoftwareSerial softwareSerial(SDS_RX_PIN, SDS_TX_PIN);
-SdsDustSensor sds(softwareSerial); //  additional parameters: retryDelayMs and maxRetriesNotAvailable
-
-//U8X8_SH1106_128X64_NONAME_HW_I2C display (/* reset=*/ U8X8_PIN_NONE); // display Töötab aga am2320 ei tööta
-U8X8_SSD1306_128X64_NONAME_SW_I2C display(SCL, SDA, U8X8_PIN_NONE);
-
-Adafruit_BMP280 bmp;
-Adafruit_Sensor *bmp_temp = bmp.getTemperatureSensor();
-Adafruit_Sensor *bmp_pressure = bmp.getPressureSensor();
-
-Adafruit_AM2320 am2320 = Adafruit_AM2320();
+void web_root();
+void web_404();
+void web_sds011_pm25();
+void web_sds011_pm10();
+void web_ccs811_eco2();
+void web_ccs811_etvoc();
+void web_bmp280_temp();
+void web_bmp280_pressure();
+void web_am2320_temp();
+void web_am2320_hum();
+void web_proximity();
+void web_r();
+void web_g();
+void web_b();
 
 /*********************************************************/
 
 void setup() {
   Serial.begin(115200);
-  Wire.begin();
+
+  Wire.begin(SDA,SCL);
 
   setup_leds();
 
@@ -136,8 +162,26 @@ void setup() {
    ******************************************************/
   Serial.printf("\nSetup: MAC %s\n",WiFi.macAddress().c_str());
   WiFi.mode(WIFI_STA);
+  //WiFi.begin(ssid, pass);
   Serial.print(WiFi.localIP());
   Serial.println();
+
+  server.on("/", web_root);
+  server.onNotFound(web_404);
+  server.on("/read_sds011_pm25", web_sds011_pm25);
+  server.on("/read_sds011_pm10", web_sds011_pm10);
+  server.on("/read_ccs811_eco2", web_ccs811_eco2);
+  server.on("/read_ccs811_etvoc", web_ccs811_etvoc);
+  server.on("/read_bmp280_temp", web_bmp280_temp);
+  server.on("/read_bmp280_pressure", web_bmp280_pressure);
+  server.on("/read_am2320_temp", web_am2320_temp);
+  server.on("/read_am2320_hum", web_am2320_hum);
+  server.on("/read_proximity", web_proximity);
+  server.on("/read_r", web_r);
+  server.on("/read_g", web_g);
+  server.on("/read_b", web_b);
+  
+  server.begin();
 
   /* Enable ThingSpeak 
    ******************************************************/
@@ -176,9 +220,9 @@ void setup() {
   
   /* AM2320
    ****************************************************/
-  if (!am2320.begin()) {
+  /*if (!am2320.begin()) {
     Serial.println("Error initializing AM2320 sensor.");
-  };
+  };*/
 
   display_compile_data();
 
@@ -187,6 +231,9 @@ void setup() {
 
 void loop() {
 
+  if( i2cbusstatus<0 ) Serial.println("Fatal error for I2C bus");
+
+  server.handleClient();
   /* Connect or reconnect to WiFi
    *******************************************************/
   if(WiFi.status() != WL_CONNECTED){
@@ -230,8 +277,20 @@ void loop() {
     print_ccs811_errstat(ccs811_errstat);
     
     // AM2320
-    am2320_temp = am2320.readTemperature();
-    am2320_hum = am2320.readHumidity();
+    //am2320_temp = am2320.readTemperature();
+    //am2320_hum = am2320.readHumidity();
+    switch(am2320.Read()) {
+      case 2:
+        Serial.println(F("  CRC failed"));
+        break;
+      case 1:
+        Serial.println(F("  Sensor offline"));
+        break;
+      case 0:
+        am2320_hum = am2320.Humidity;
+        am2320_temp = am2320.cTemp;
+        break;
+    }
 
     // BMP280
     sensors_event_t temp_event, pressure_event;
@@ -587,4 +646,76 @@ void display_rgb() {
   display.print(g);
   display.setCursor(8, 8);
   display.print(b);
+}
+
+/**
+ * Web pages
+ **/
+
+void web_404(){
+  server.send(404, "text/plain", "404: Not found");
+}
+
+void web_root() {
+  server.send_P(200, "text/html", MAIN_page, sizeof(MAIN_page));
+}
+
+void web_sds011_pm25(){
+  String a = String(sds011_pm25);
+  server.send(200, "text/plane", a);
+}
+
+void web_sds011_pm10(){
+  String a = String(sds011_pm10);
+  server.send(200, "text/plane", a);
+}
+
+void web_ccs811_eco2(){
+  String a = String(ccs811_eco2);
+  server.send(200, "text/plane", a);
+}
+
+void web_ccs811_etvoc() {
+  String a = String(ccs811_etvoc);
+  server.send(200, "text/plane", a);
+}
+
+void web_bmp280_temp() {
+  String a = String(bmp280_temp);
+  server.send(200, "text/plane", a);
+}
+
+void web_bmp280_pressure() {
+  String a = String(bmp280_pressure);
+  server.send(200, "text/plane", a);
+}
+
+void web_am2320_temp() {
+  String a = String(am2320_temp);
+  server.send(200, "text/plane", a);
+}
+
+void web_am2320_hum() {
+  String a = String(am2320_hum);
+  server.send(200, "text/plane", a);
+}
+
+void web_proximity() {
+  String a = String(proximity);
+  server.send(200, "text/plane", a);
+}
+
+void web_r() {
+  String a = String(r);
+  server.send(200, "text/plane", a);
+}
+
+void web_g(){
+  String a = String(g);
+  server.send(200, "text/plane", a);
+}
+
+void web_b(){
+  String a = String(b);
+  server.send(200, "text/plane", a);
 }
