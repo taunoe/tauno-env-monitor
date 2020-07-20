@@ -1,7 +1,7 @@
 /*****************************************************
  * File: main.cpp
  * By Tauno Erik
- * Modified: 18. juuli 2020
+ * Modified: 20. juuli 2020
  *****************************************************/
 
 #include <Arduino.h>
@@ -54,7 +54,7 @@ const char * myWriteAPIKey = THINGSPEAK_WRITE_APIKEY;
 
 const int BMP280_ADDR = 0x76;
 
-const int T_100MS = 100;
+const int TWO_SECONDS = 2000; // 2 secons
 const int ONE_MINUTE = 60000; 
 const int FIVE_MINUTES = ONE_MINUTE * 5;
 const int FIVE_MINUTES_30SEK = (ONE_MINUTE*5) + (ONE_MINUTE/2); // 5min 30sek
@@ -82,18 +82,19 @@ int b = 0;          // blue
 
 float am2320_temp = 0;
 float am2320_hum = 0;
+int am2320_errstat = 0;
 
-boolean is_100ms = false;
+boolean is_first_loop = true;
+boolean is_2seconds = false;
 boolean is_1minute = false;
 boolean is_5minutes = false;
 boolean is_5minutes_30sek = false;
 
-unsigned long prev_100ms_millis = 0;
+unsigned long prev_2seconds_millis = 0;
 unsigned long prev_1minute_millis = 0;
 unsigned long prev_5minutes_millis = 0;
 unsigned long prev_5minutes_30sek = 0;
 
-int i2cbusstatus;
 
 /********************
  * Object Calls
@@ -127,6 +128,7 @@ void init_bmp280();
 void gesture_detection();
 void calculate_time();
 void read_sds011();
+void read_am2320();
 void serial_print_sensors_data();
 void set_thingspeak_fields();
 void display_compile_data();
@@ -231,9 +233,6 @@ void setup() {
 
 void loop() {
 
-  if( i2cbusstatus<0 ) Serial.println("Fatal error for I2C bus");
-
-  server.handleClient();
   /* Connect or reconnect to WiFi
    *******************************************************/
   if(WiFi.status() != WL_CONNECTED){
@@ -245,6 +244,8 @@ void loop() {
     } 
     Serial.println("\n Wifi Connected.");
   }
+
+  server.handleClient(); // display webpage
 
 
   /* APDS9960
@@ -262,24 +263,33 @@ void loop() {
     gesture_detection();
   }
 
+
   calculate_time();
 
   /* Do things by time
   ********************************************************/
-  if (is_100ms) {
-    is_100ms = false;
+  if (is_2seconds) {
+    // Read CCS811
+    ccs811.read(&ccs811_eco2,&ccs811_etvoc,&ccs811_errstat,&ccs811_raw);
+    print_ccs811_errstat(ccs811_errstat);
+    // AM2320
+    read_am2320();
+    // BMP280
+    sensors_event_t temp_event, pressure_event;
+    bmp_temp->getEvent(&temp_event);
+    bmp_pressure->getEvent(&pressure_event);
+    bmp280_temp = temp_event.temperature;
+    bmp280_pressure = pressure_event.pressure;
+
+    is_2seconds = false;
   }
 
   
   if (is_1minute){
-    // CCS811
-    ccs811.read(&ccs811_eco2,&ccs811_etvoc,&ccs811_errstat,&ccs811_raw);
-    print_ccs811_errstat(ccs811_errstat);
-    
     // AM2320
     //am2320_temp = am2320.readTemperature();
     //am2320_hum = am2320.readHumidity();
-    switch(am2320.Read()) {
+    /*switch(am2320.Read()) {
       case 2:
         Serial.println(F("  CRC failed"));
         break;
@@ -290,14 +300,14 @@ void loop() {
         am2320_hum = am2320.Humidity;
         am2320_temp = am2320.cTemp;
         break;
-    }
+    }*/
 
     // BMP280
-    sensors_event_t temp_event, pressure_event;
+    /*sensors_event_t temp_event, pressure_event;
     bmp_temp->getEvent(&temp_event);
     bmp_pressure->getEvent(&pressure_event);
     bmp280_temp = temp_event.temperature;
-    bmp280_pressure = pressure_event.pressure;
+    bmp280_pressure = pressure_event.pressure;*/
     
     display_data();
     serial_print_sensors_data();
@@ -314,9 +324,9 @@ void loop() {
   
   if (is_5minutes_30sek){
     read_sds011();
+    display_sds011();
 
     set_thingspeak_fields(); 
-
     ThingSpeak.setStatus(get_status());
 
     // Write to the ThingSpeak channel
@@ -328,8 +338,6 @@ void loop() {
       Serial.print("Problem updating ThingSpeak.");
       Serial.println(" HTTP error code " + String(x));
     }
-
-    display_sds011();
 
     is_5minutes_30sek = false;
   }
@@ -462,14 +470,14 @@ void set_thingspeak_fields() {
 String get_status() {
   String status = ""; 
 
-  if (isnan(am2320_temp)){
+  if (am2320_errstat == 2){
     status += String("-am2320er");
   }
   else if (ccs811_errstat != CCS811_ERRSTAT_OK) {
     status += String("-ccs811er");
   }
   else{
-    status += String("-am2320ok");
+    status += String("-ok");
   }
   
   return status;
@@ -495,6 +503,30 @@ void init_bmp280() {
                   Adafruit_BMP280::STANDBY_MS_500); /* Standby time. */
 
   bmp_temp->printSensorDetails();
+}
+
+
+/**
+ * 
+ **/
+void read_am2320() {
+  am2320_errstat = am2320.Read();
+  if (am2320_errstat == 0) {
+    am2320_hum = am2320.Humidity;
+    am2320_temp = am2320.cTemp;
+  }
+  /*switch(am2320.Read()) {
+      case 2:
+        Serial.println(F("  CRC failed"));
+        break;
+      case 1:
+        Serial.println(F("  Sensor offline"));
+        break;
+      case 0:
+        am2320_hum = am2320.Humidity;
+        am2320_temp = am2320.cTemp;
+        break;
+    }*/
 }
 
 
@@ -536,9 +568,9 @@ void gesture_detection() {
  **/
 void calculate_time() {
   // 100ms
-  if ((millis() - prev_100ms_millis) >= T_100MS){
-    is_100ms = true;
-    prev_100ms_millis = millis();
+  if ((millis() - prev_2seconds_millis) >= TWO_SECONDS){
+    is_2seconds = true;
+    prev_2seconds_millis= millis();
   }
   // 01:00
   if ((millis() - prev_1minute_millis) >= ONE_MINUTE){
@@ -605,6 +637,13 @@ void display_sds011() {
 }
 
 void display_data() {
+  if (is_first_loop) {
+    display.clearLine(0);
+    display.drawString(0, 0,"PM25:");
+    display.clearLine(1);
+    display.drawString(0, 1,"PM10:");
+    is_first_loop = false;
+  }
   // Row 2
   display.clearLine(2);
   display.drawString(0, 2,"co2:");
