@@ -1,8 +1,55 @@
-# My home environment monitoring system
+# My home environment and air quality monitoring system
+
+We often hide the electronics in a box. And cases can be done well and nicely. But when our main interest is electronics then it is sad to hide it. That is way like to do it the opposite way.
 
 Sensors will measure particulate matter (Ultrafine dust PM2.5 and fine dust PM10), co2, TVOC, ambient light, humidity, temperature and barometric pressure.
 
-All data is stored on ThingSpeak channel. Publick view in real time: https://thingspeak.com/channels/1099844
+Most sensors use I2C to communicate. That makes it super easy to build.
+
+## Why and what
+
+We spend much of our lives indoors. And that is why it is important that our main living environment is healthy.
+
+- CO2 level should be less than <1000 ppm
+- TVOC is the concentration of Volatile organic compounds (VOCs) present in the air. Should be less than <100 ppm.
+- PM2.5 refers to atmospheric particulate matter (PM) that have a diameter of less than 2.5 micrometers. The 24-hour concentration of PM2.5 is considered unhealthy when it rises above 35.4 (60) μg/m3.
+- PM10 refers to atmospheric particulate matter (PM) that have a diameter of less than 10 micrometers. < 100 μg/m3.
+- Humidity 40-60 %
+- Temperature 21-25 °C
+
+## Schemetics
+
+This is the basic schematics.
+
+![Basic](./Schematics/basic.jpg)
+
+Because I still had free pins, I added four LEDs.
+
+![Basic+LEDs](./Schematics/basic-leds.jpg)
+
+My power supply is 9V. This is a circuit to make 3.3C and 5V what my MCU and sensors need.
+
+![Power](./Schematics/power.jpg)
+
+## Data
+
+There are four places to view real-time data:
+
+- On display
+- Via serial monitor
+- Local webpage
+- ThingSpeak channel. Publick view: https://thingspeak.com/channels/1099844
+
+In the long term, all data is stored on ThingSpeak channel.
+
+Serial Monitor view:
+![Website](./doc/serial.jpg)
+
+Simple local website:
+![Website](./doc/Ekraan_web.jpg)
+
+ThingSpeak view:
+![Website](./doc/ThingSpeak.jpg)
 
 ### Notes
 

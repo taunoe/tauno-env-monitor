@@ -21,8 +21,8 @@
 #include <ESP8266WebServer.h>
 //#include <ESP8266WiFiMulti.h>
 #include <ThingSpeak.h>
-#include "secrets.h"
-#include "index.h"
+#include "secrets.h"  // wifi passwords
+#include "index.h"    // html web page
 // File secrets.h content:
 // #define SECRET_SSID "MySSID"     // replace MySSID with your WiFi network name
 // #define SECRET_PASS "MyPassword" // replace MyPassword with your WiFi password
@@ -31,8 +31,7 @@
 /*
  TODO:
  1. status messages
- 2. LEDs
- 3. Web interface
+ 2. Web interface
 */
 
 /********************
@@ -107,8 +106,8 @@ CCS811 ccs811(NWAKE_PIN);
 SoftwareSerial softwareSerial(SDS_RX_PIN, SDS_TX_PIN);
 SdsDustSensor sds(softwareSerial); //  additional parameters: retryDelayMs and maxRetriesNotAvailable
 
-//U8X8_SH1106_128X64_NONAME_HW_I2C display (/* reset=*/ U8X8_PIN_NONE); // display Töötab aga am2320 ei tööta
-U8X8_SSD1306_128X64_NONAME_SW_I2C display(SCL, SDA, U8X8_PIN_NONE);
+//U8X8_SH1106_128X64_NONAME_HW_I2C display (/* reset=*/ U8X8_PIN_NONE); // am2320 will not work
+U8X8_SSD1306_128X64_NONAME_SW_I2C display(SCL, SDA, U8X8_PIN_NONE); // there is white stripe on the right side
 
 Adafruit_BMP280 bmp;
 Adafruit_Sensor *bmp_temp = bmp.getTemperatureSensor();
@@ -120,7 +119,7 @@ AM2320 am2320(&Wire);
 
 /* Functions Prototyps
 ****************************************/
-void setup_leds();
+void init_leds();
 void init_ccs811();
 void print_ccs811_errstat(uint16_t ccs811_errstat);
 String get_status();
@@ -158,7 +157,7 @@ void setup() {
 
   Wire.begin(SDA,SCL);
 
-  setup_leds();
+  init_leds();
 
   /* Wifi
    ******************************************************/
@@ -272,8 +271,7 @@ void loop() {
     // Read CCS811
     ccs811.read(&ccs811_eco2,&ccs811_etvoc,&ccs811_errstat,&ccs811_raw);
     print_ccs811_errstat(ccs811_errstat);
-    // AM2320
-    read_am2320();
+    
     // BMP280
     sensors_event_t temp_event, pressure_event;
     bmp_temp->getEvent(&temp_event);
@@ -287,27 +285,7 @@ void loop() {
   
   if (is_1minute){
     // AM2320
-    //am2320_temp = am2320.readTemperature();
-    //am2320_hum = am2320.readHumidity();
-    /*switch(am2320.Read()) {
-      case 2:
-        Serial.println(F("  CRC failed"));
-        break;
-      case 1:
-        Serial.println(F("  Sensor offline"));
-        break;
-      case 0:
-        am2320_hum = am2320.Humidity;
-        am2320_temp = am2320.cTemp;
-        break;
-    }*/
-
-    // BMP280
-    /*sensors_event_t temp_event, pressure_event;
-    bmp_temp->getEvent(&temp_event);
-    bmp_pressure->getEvent(&pressure_event);
-    bmp280_temp = temp_event.temperature;
-    bmp280_pressure = pressure_event.pressure;*/
+    read_am2320();
     
     display_data();
     serial_print_sensors_data();
@@ -374,29 +352,21 @@ void read_sds011() {
  * Function to initialize LEDs pins and intro blinks.
  * Use in loop()
  **/
-void setup_leds() {
+void init_leds() {
   pinMode(LED_1, OUTPUT);
   pinMode(LED_2, OUTPUT);
   pinMode(LED_3, OUTPUT);
   pinMode(LED_4, OUTPUT);
 
-  digitalWrite(LED_1, LOW);
-  digitalWrite(LED_2, LOW);
-  digitalWrite(LED_3, LOW);
-  digitalWrite(LED_4, HIGH); // HIGH = on board led off
-
+  delay(500);
   digitalWrite(LED_1, HIGH);
   delay(500);
-  digitalWrite(LED_1, LOW);
   digitalWrite(LED_2, HIGH);
   delay(500);
-  digitalWrite(LED_2, LOW);
   digitalWrite(LED_3, HIGH);
   delay(500);
-  digitalWrite(LED_3, LOW);
-  digitalWrite(LED_4, LOW);
+  digitalWrite(LED_4, HIGH); // HIGH == on board led off
   delay(500);
-  digitalWrite(LED_4, HIGH);
 }
 
 
@@ -616,9 +586,10 @@ void serial_print_sensors_data(){
 
 void display_compile_data() {
   display.drawString(0, 0,"compiled:");
-  display.drawString(1, 1, __DATE__);
-  display.drawString(1, 2, __TIME__);
-  display.setCursor(0, 3);
+  display.drawString(1, 1, __TIME__);
+  display.drawString(1, 2, __DATE__);
+
+  display.setCursor(0, 4);
   display.print(WiFi.localIP());
   display.drawString(0, 5, "by Tauno Erik");
 }
