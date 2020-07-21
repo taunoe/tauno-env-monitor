@@ -97,8 +97,7 @@ Default I2C SDA/SCL pins:
 
 ### Library:
 
-- Adafruit_BMP280_Library
-- https://learn.adafruit.com/adafruit-bmp280-barometric-pressure-plus-temperature-sensor-breakout/overview
+- https://github.com/adafruit/Adafruit_BMP280_Library
 
 ## APDS-9960 Proximity, RGB and gesture sensor
 
