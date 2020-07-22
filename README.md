@@ -1,5 +1,7 @@
 # My home environment and air quality monitoring system
 
+![Freeform environment system](./img/IMG_7979.jpg)
+
 We often hide the electronics in a box. And cases can be done well and nicely. But when our main interest is electronics then it is sad to hide it. That is way like to do it the opposite way.
 
 Sensors will measure particulate matter (Ultrafine dust PM2.5 and fine dust PM10), co2, TVOC, ambient light, humidity, temperature and barometric pressure.
