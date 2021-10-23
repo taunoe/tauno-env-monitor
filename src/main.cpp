@@ -1,32 +1,28 @@
 /*****************************************************
+ * Project: tauno-env-monitor
  * File: main.cpp
  * By Tauno Erik
- * Modified: 20. juuli 2020
+ * Modified: 23.10.2021
  *****************************************************/
 
 #include <Arduino.h>
+#include <ESP8266WiFi.h>
+#include <WiFiClient.h>
+#include <ESP8266WiFiMulti.h>
+#include <ESP8266mDNS.h>
+#include <ESP8266WebServer.h>
 #include <Wire.h>             // I2C
-#include <SPI.h>
+#include <SPI.h>              // Oled display
 #include <SdsDustSensor.h>    // Dust sensor
-#include <U8g2lib.h>          // Universal 8bit Graphics Library 
-                              // (https://github.com/olikraus/u8g2/)
+#include <U8g2lib.h>          // Universal 8bit Graphics Library // (https://github.com/olikraus/u8g2/)
 #include <ccs811.h>           // co2 sensor
 #include <Adafruit_BMP280.h>  // Barometric Pressure
 #include "APDS9960.h"         // Light, RGB, Proximity, Gesture sensor
-//#include <Adafruit_Sensor.h>
-//#include <Adafruit_AM2320.h>
 #include "AM2320.h"
-#include <ESP8266WiFi.h>
-#include <WiFiClient.h>
-#include <ESP8266WebServer.h>
-//#include <ESP8266WiFiMulti.h>
 #include <ThingSpeak.h>
-#include "secrets.h"  // wifi passwords
-#include "index.h"    // html web page
-// File secrets.h content:
-// #define SECRET_SSID "MySSID"     // replace MySSID with your WiFi network name
-// #define SECRET_PASS "MyPassword" // replace MyPassword with your WiFi password
-// Thingspeak
+
+#include "secrets.h"          // wifi, thingspeak passwords
+#include "index.h"            // html web page
 
 /*
  TODO:
@@ -34,54 +30,76 @@
  2. Web interface
 */
 
-/********************
- * Constants
- ********************/
+// Wifi
+ESP8266WiFiMulti wifiMulti;
+// WiFi connect timeout per AP. Increase when connecting takes longer.
+const uint32_t connectTimeoutMs {5000};
+WiFiClient  client;
+ESP8266WebServer server(80);
+
+// Thingspeak
+const unsigned long myChannelNumber = Secret::id;
+const char * myWriteAPIKey = Secret::key;
+
+
+// LED Pins
 const int LED_1 = D6;
 const int LED_2 = D5;
 const int LED_3 = D0;
-const int LED_4 = D4;       // allso on board LED!
+const int LED_4 = D4;       // allos on board LED!
+
+
+// SDS011
 const int NWAKE_PIN = D3;   // nWAKE on D3 or GND
 const int SDS_RX_PIN = D7;  // D7 -> SDS011 TX pin
 const int SDS_TX_PIN = D8;  // D8 -> SDS011 RX pin
+float sds011_pm25 = 0;
+float sds011_pm10 = 0;
 
-// Wifi & Thingspeak:
-const char * ssid = SECRET_SSID_1;   // your network SSID (name) 
-const char * pass = SECRET_PASS_1;   // your network password
-const unsigned long myChannelNumber = THINGSPEAK_CH_ID;
-const char * myWriteAPIKey = THINGSPEAK_WRITE_APIKEY;
+SoftwareSerial softwareSerial(SDS_RX_PIN, SDS_TX_PIN);
+SdsDustSensor sds(softwareSerial);
+//  additional parameters: retryDelayMs and maxRetriesNotAvailable
 
+
+// BMP280
 const int BMP280_ADDR = 0x76;
+float bmp280_temp = 0;
+float bmp280_pressure = 0;
 
-const int TWO_SECONDS = 2000; // 2 secons
-const int ONE_MINUTE = 60000; 
-const int FIVE_MINUTES = ONE_MINUTE * 5;
-const int FIVE_MINUTES_30SEK = (ONE_MINUTE*5) + (ONE_MINUTE/2); // 5min 30sek
+Adafruit_BMP280 bmp;
+Adafruit_Sensor *bmp_temp = bmp.getTemperatureSensor();
+Adafruit_Sensor *bmp_pressure = bmp.getPressureSensor();
 
-/********************
- * Global variables
- ********************/
 
-//CCS811 co2 sensor:
+// CCS811 co2 sensor:
 uint16_t ccs811_eco2 = 0; 
 uint16_t ccs811_etvoc = 0;
 uint16_t ccs811_errstat = 0; 
 uint16_t ccs811_raw = 0;
 
-float sds011_pm25 = 0;
-float sds011_pm10 = 0;
+CCS811 ccs811(NWAKE_PIN);
 
-float bmp280_temp = 0;
-float bmp280_pressure = 0;
 
+// APDS9960
 int proximity = 0;  // smaller is closer //APDS9960
 int r = 0;          // red
 int g = 0;          // green
 int b = 0;          // blue
 
+
+// AM2320
 float am2320_temp = 0;
 float am2320_hum = 0;
 int am2320_errstat = 0;
+
+AM2320 am2320(&Wire);
+
+
+// Time
+const int TWO_SECONDS = 2000; // 2 secons
+const int ONE_MINUTE = 60000; 
+const int FIVE_MINUTES = ONE_MINUTE * 5;
+const int FIVE_MINUTES_30SEK = (ONE_MINUTE*5) + (ONE_MINUTE/2); // 5min 30sek
 
 boolean is_first_loop = true;
 boolean is_2seconds = false;
@@ -95,26 +113,9 @@ unsigned long prev_5minutes_millis = 0;
 unsigned long prev_5minutes_30sek = 0;
 
 
-/********************
- * Object Calls
- *******************/
-WiFiClient  client;
-ESP8266WebServer server(80);
-
-CCS811 ccs811(NWAKE_PIN);            
-
-SoftwareSerial softwareSerial(SDS_RX_PIN, SDS_TX_PIN);
-SdsDustSensor sds(softwareSerial); //  additional parameters: retryDelayMs and maxRetriesNotAvailable
-
+// OLED display
 //U8X8_SH1106_128X64_NONAME_HW_I2C display (/* reset=*/ U8X8_PIN_NONE); // am2320 will not work
 U8X8_SSD1306_128X64_NONAME_SW_I2C display(SCL, SDA, U8X8_PIN_NONE); // there is white stripe on the right side
-
-Adafruit_BMP280 bmp;
-Adafruit_Sensor *bmp_temp = bmp.getTemperatureSensor();
-Adafruit_Sensor *bmp_pressure = bmp.getPressureSensor();
-
-//Adafruit_AM2320 am2320 = Adafruit_AM2320();
-AM2320 am2320(&Wire);
 
 
 /* Functions Prototyps
@@ -150,10 +151,30 @@ void web_r();
 void web_g();
 void web_b();
 
+void maintain_wifi() {
+  /* Maintain WiFi connection */
+  if (wifiMulti.run(connectTimeoutMs) == WL_CONNECTED) {
+    Serial.print("\nWiFi SSID: ");
+    Serial.print(WiFi.SSID());
+    Serial.print("\n IP: ");
+    Serial.println(WiFi.localIP());
+  } else {
+    Serial.println("WiFi not connected!");
+  }
+}
+
 /*********************************************************/
 
 void setup() {
   Serial.begin(115200);
+
+  delay(500);
+  Serial.println("Tauno ENV monitor starts.");
+  Serial.print("Compiled: ");
+  Serial.print(__TIME__);
+  Serial.print(" ");
+  Serial.println(__DATE__);
+  Serial.println("Made by Tauno Erik.");
 
   Wire.begin(SDA,SCL);
 
@@ -162,9 +183,16 @@ void setup() {
   /* Wifi
    ******************************************************/
   Serial.printf("\nSetup: MAC %s\n",WiFi.macAddress().c_str());
-  WiFi.mode(WIFI_STA);
+  WiFi.mode(WIFI_STA); // Set WiFi to station mode
   //WiFi.begin(ssid, pass);
-  Serial.print(WiFi.localIP());
+
+  // Register multi WiFi networks
+  // wifiMulti.addAP("ssid", "your_password");
+  wifiMulti.addAP(Secret::ssd1, Secret::pass1);
+  wifiMulti.addAP(Secret::ssd2, Secret::pass2);
+
+  maintain_wifi();
+  //Serial.print(WiFi.localIP());
   Serial.println();
 
   server.on("/", web_root);
@@ -234,7 +262,7 @@ void loop() {
 
   /* Connect or reconnect to WiFi
    *******************************************************/
-  if(WiFi.status() != WL_CONNECTED){
+  /*if(WiFi.status() != WL_CONNECTED){
     Serial.print("Attempting to connect to wifi .");
     while(WiFi.status() != WL_CONNECTED){
       WiFi.begin(ssid, pass);
@@ -242,7 +270,7 @@ void loop() {
       delay(500);     
     } 
     Serial.println("\n Wifi Connected.");
-  }
+  }*/
 
   server.handleClient(); // display webpage
 
@@ -304,6 +332,7 @@ void loop() {
     read_sds011();
     display_sds011();
 
+    maintain_wifi();
     set_thingspeak_fields(); 
     ThingSpeak.setStatus(get_status());
 
