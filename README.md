@@ -246,3 +246,7 @@ Can measure fine dust and smoke = particulate matter (MP) concentrations in two 
 
 - https://gist.github.com/netmaniac/a6414149a5a09ba1ebf702ff8d5056c5
 - https://gitlab.com/frankrich/sds011_particle_sensor
+
+___
+
+Copyright 2021 Tauno Erik https://taunoerik.art
